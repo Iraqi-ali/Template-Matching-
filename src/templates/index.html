@@ -318,7 +318,7 @@ document.querySelectorAll('.tab-btn').forEach(b=>{b.onclick=function(){
   if(S.currentTab==='vault') vaultList();
 }});
 
-function hideCards(){['matchCard','forensicsCard','sigCard','metaCard','cmCard','fontCard','scoreCard','advCard','statusCard'].forEach(id=>document.getElementById(id).style.display='none')}
+function hideCards(){['matchCard','forensicsCard','sigCard','metaCard','cmCard','fontCard','scoreCard','advCard'].forEach(id=>document.getElementById(id).style.display='none')}
 
 // Upload
 async function upload(type,input){
@@ -406,7 +406,7 @@ function upd(){
 
 // MATCH
 async function runMatch(){
-  if(!S.hasSrc||!S.hasTpl)return;loading(true,'🔍 جاري المطابقة والتحقق...');hideCards();setProgress(15,'تهيئة الصور...');
+  if(!S.hasSrc||!S.hasTpl)return;hideCards();loading(true,'🔍 جاري المطابقة والتحقق...');setProgress(15,'تهيئة الصور...');
   try{var r=await fetch('/api/match',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:document.getElementById('method').value,threshold:parseFloat(document.getElementById('threshold').value),multi_scale:document.getElementById('multiScale').checked})});setProgress(60,'جاري matchTemplate + z-score...');
     var d=await r.json();if(!d.ok)throw new Error(d.error);setProgress(85,'التحقق متعدد الطبقات (SSIM, Histogram, Edge)...');
     showImg(d.result_preview);
@@ -425,7 +425,7 @@ async function runMatch(){
 }
 
 async function runCompare(){
-  if(!S.hasSrc||!S.hasTpl)return;loading(true,'📊 جاري مقارنة جميع طرق المطابقة...');hideCards();setProgress(20,'تهيئة 6 طرق...');
+  if(!S.hasSrc||!S.hasTpl)return;hideCards();loading(true,'📊 جاري مقارنة جميع طرق المطابقة...');setProgress(20,'تهيئة 6 طرق...');
   try{var r=await fetch('/api/compare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({threshold:parseFloat(document.getElementById('threshold').value)})});setProgress(70,'مقارنة CCOEFF, CCORR, SQDIFF...');
     var d=await r.json();if(!d.ok)throw new Error(d.error);
     showImg(d.comparison_preview);showStats('📊 مقارنة',(d.methods||[]).length+' طرق','','');
@@ -436,7 +436,7 @@ async function runCompare(){
 
 // FORENSICS
 async function runForensics(){
-  if(!S.hasSrc||!S.hasTpl)return;loading(true,'🔬 جاري الفحص الجنائي (5 طرق)...');hideCards();setProgress(10,'محاذاة الصور (ECC)...');
+  if(!S.hasSrc||!S.hasTpl)return;hideCards();loading(true,'🔬 جاري الفحص الجنائي (5 طرق)...');setProgress(10,'محاذاة الصور (ECC)...');
   try{var r=await fetch('/api/document-forensics',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});setProgress(40,'❶ فرق البكسل + ❷ عرض الخط...');setTimeout(function(){setProgress(65,'❸ تناسق الحبر (LAB) + ❹ تحليل التباعد...');},500);setTimeout(function(){setProgress(85,'❺ النسيج والتدرج + تجميع heatmap...');},1000);
     var d=await r.json();if(!d.ok)throw new Error(d.error);setProgress(95,'رسم النتائج...');
     showImg(d.annotated_preview||d.canvas_preview);
@@ -461,7 +461,7 @@ async function runForensics(){
 
 // SIGNATURE
 async function runSignature(){
-  if(!S.hasSrc||!S.hasTpl)return;loading(true,'✍️ جاري التحقق من التوقيع (5 طرق)...');hideCards();setProgress(20,'استخراج منطقة التوقيع...');
+  if(!S.hasSrc||!S.hasTpl)return;hideCards();loading(true,'✍️ جاري التحقق من التوقيع (5 طرق)...');setProgress(20,'استخراج منطقة التوقيع...');
   try{var r=await fetch('/api/signature-verify',{method:'POST'});setProgress(50,'تحليل هندسي + كثافة + طوبولوجيا...');setTimeout(function(){setProgress(75,'Hu Moments + ORB matching...');},400);
     var d=await r.json();if(!d.ok)throw new Error(d.error);setProgress(95,'تصنيف النتيجة...');
     if(d.annotated_preview)showImg(d.annotated_preview);
@@ -531,7 +531,7 @@ async function vaultDelete(){
 
 // REPORT
 async function genReport(){
-  if(!S.hasSrc||!S.hasTpl)return;loading(true,'📄 جاري إنشاء التقرير الاحترافي...');hideCards();setProgress(15,'تشغيل الفحص الجنائي...');
+  if(!S.hasSrc||!S.hasTpl)return;hideCards();loading(true,'📄 جاري إنشاء التقرير الاحترافي...');setProgress(15,'تشغيل الفحص الجنائي...');
   try{var r=await fetch('/api/generate-report',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});setProgress(55,'البحث في بصمات المستندات...');setTimeout(function(){setProgress(80,'توليد المخططات والرسوم البيانية...');},700);
     var d=await r.json();if(!d.ok)throw new Error(d.error);setProgress(95,'تنسيق التقرير النهائي...');
     var w=window.open('','_blank','width=1000,height=750');w.document.write(d.html_report);w.document.close();
@@ -541,7 +541,7 @@ async function genReport(){
 }
 
 async function runMetadata(){
-  if(!S.hasSrc)return;loading(true,'📋 جاري تحليل البيانات الوصفية...');hideCards();setProgress(30,'استخراج EXIF...');
+  if(!S.hasSrc)return;hideCards();loading(true,'📋 جاري تحليل البيانات الوصفية...');setProgress(30,'استخراج EXIF...');
   try{var r=await fetch('/api/metadata',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});setProgress(70,'تحليل الشذوذ...');
     var d=await r.json();if(!d.ok)throw new Error(d.error);
     var card=document.getElementById('metaCard');card.style.display='block';
@@ -554,7 +554,7 @@ async function runMetadata(){
 
 // COPY-MOVE
 async function runCopyMove(){
-  if(!S.hasSrc)return;loading(true,'🔍 جاري فحص النسخ واللصق...');hideCards();setProgress(20,'تقسيم الصورة إلى كتل...');
+  if(!S.hasSrc)return;hideCards();loading(true,'🔍 جاري فحص النسخ واللصق...');setProgress(20,'تقسيم الصورة إلى كتل...');
   try{var r=await fetch('/api/copy-move',{method:'POST'});var d=await r.json();if(!d.ok)throw new Error(d.error);
     setProgress(80,'تحليل النتائج...');
     showImg(d.annotated_preview);
@@ -573,7 +573,7 @@ async function runCopyMove(){
 
 // FONT
 async function runFontAnalysis(){
-  if(!S.hasSrc)return;loading(true,'🔤 جاري تحليل تناسق الخطوط...');hideCards();setProgress(30,'استخراج مناطق النص...');
+  if(!S.hasSrc)return;hideCards();loading(true,'🔤 جاري تحليل تناسق الخطوط...');setProgress(30,'استخراج مناطق النص...');
   try{var r=await fetch('/api/font-analysis',{method:'POST'});var d=await r.json();if(!d.ok)throw new Error(d.error);
     setProgress(70,'مقارنة الأحجام والأوزان...');
     if(d.annotated_preview)showImg(d.annotated_preview);
@@ -641,7 +641,7 @@ document.addEventListener('keydown',function(e){if(e.ctrlKey&&e.key==='Enter'){i
 
 // ADVANCED DETECTION (5 methods)
 async function runAdvanced(){
-  if(!S.hasSrc)return;loading(true,'🧬 جاري الفحص المتقدم (5 طرق)...');hideCards();setProgress(10,'❶ JPEG Ghost Detection...');
+  if(!S.hasSrc)return;hideCards();loading(true,'🧬 جاري الفحص المتقدم (5 طرق)...');setProgress(10,'❶ JPEG Ghost Detection...');
   try{var r=await fetch('/api/advanced-detect',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     setTimeout(function(){setProgress(30,'❷ Double JPEG Compression...');},300);
     setTimeout(function(){setProgress(50,'❸ Luminance Gradient...');},600);
