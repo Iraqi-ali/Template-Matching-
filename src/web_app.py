@@ -650,7 +650,15 @@ def create_app() -> Flask:
         cm_report = CopyMoveDetector().detect(suspect)
         font_report = FontAnalyzer().analyze(suspect)
         sig_report = SignatureVerifier().verify(original, suspect)
-        meta_report = MetadataAnalyzer().analyze("suspect")
+        # Save suspect to temp file for metadata analysis
+        import tempfile
+        meta_report = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                cv2.imwrite(tmp.name, suspect)
+                meta_report = MetadataAnalyzer().analyze(tmp.name)
+            os.unlink(tmp.name)
+        except Exception: pass
         try: adv_report = AdvancedDetectors().analyze(original, suspect)
         except Exception: adv_report = None
         scorer = AuthenticityScorer()
