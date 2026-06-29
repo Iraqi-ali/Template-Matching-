@@ -202,12 +202,13 @@ class AdvancedDetectors:
 
                 # Entropy of coefficient distribution
                 entropy = -np.sum(hist_norm * np.log2(hist_norm + 1e-9))
+                if np.isnan(entropy): entropy = 4.0
                 # Zero gaps in histogram indicate double compression
-                zero_gaps = np.sum(hist[1:-1] == 0) / len(hist)
+                zero_gaps = np.sum(hist[1:-1] == 0) / max(len(hist), 1)
                 scores.append(zero_gaps + (1.0 - min(entropy / 4.0, 1.0)))
 
         avg_score = np.mean(scores) if scores else 0
-        djpeg_score = min(avg_score * 3.0, 1.0)
+        djpeg_score = min(max(avg_score * 3.0, 0.0), 1.0) if not np.isnan(avg_score) else 0.0
 
         if djpeg_score > 0.6:
             detail = f"Strong double-JPEG evidence (score={djpeg_score:.3f}) — image was recompressed after editing"
@@ -307,6 +308,8 @@ class AdvancedDetectors:
         # Cross-channel correlation (should be similar for same camera)
         rg_corr = np.corrcoef(r.flatten()[:10000], g.flatten()[:10000])[0, 1]
         gb_corr = np.corrcoef(g.flatten()[:10000], b.flatten()[:10000])[0, 1]
+        if np.isnan(rg_corr): rg_corr = 0.0
+        if np.isnan(gb_corr): gb_corr = 0.0
         corr_diff = abs(rg_corr - gb_corr)
 
         cfa_score = min(corr_diff * 2.0 + (r_pattern + b_pattern) / 2, 1.0)
@@ -355,7 +358,8 @@ class AdvancedDetectors:
         noise_ref_flat = noise_ref.flatten()
 
         correlation = np.corrcoef(noise_img_flat, noise_ref_flat)[0, 1]
-        correlation = max(0, correlation) if not np.isnan(correlation) else 0
+        if np.isnan(correlation): correlation = 0.0
+        correlation = max(0.0, float(correlation))
 
         if correlation > 0.7:
             detail = f"PRNU match: {correlation:.2%} — likely same camera sensor"

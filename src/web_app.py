@@ -726,36 +726,43 @@ def create_app() -> Flask:
         template = _get_image(sid, "template")
         if source is None:
             return jsonify({"error": "Upload source image first"}), 400
-        engine = AdvancedDetectors()
-        report = engine.analyze(source, template)
-        heatmap_b64 = ""
-        if report.heatmap is not None:
-            heatmap_vis = cv2.applyColorMap((report.heatmap*255).astype(np.uint8), cv2.COLORMAP_HOT)
-            heatmap_b64 = _img_to_b64(heatmap_vis, max_dim=900)
-        return jsonify({
-            "ok": True,
-            "verdict": report.verdict,
-            "overall_risk": round(report.overall_risk, 4),
-            "is_suspicious": report.is_suspicious,
-            "jpeg_ghost_score": round(report.jpeg_ghost_score, 4),
-            "jpeg_ghost_detected": report.jpeg_ghost_detected,
-            "jpeg_ghost_details": report.jpeg_ghost_details,
-            "double_jpeg_score": round(report.double_jpeg_score, 4),
-            "double_jpeg_detected": report.double_jpeg_detected,
-            "double_jpeg_details": report.double_jpeg_details,
-            "luminance_score": round(report.luminance_score, 4),
-            "luminance_anomaly": report.luminance_anomaly,
-            "luminance_details": report.luminance_details,
-            "cfa_score": round(report.cfa_score, 4),
-            "cfa_anomaly": report.cfa_anomaly,
-            "cfa_details": report.cfa_details,
-            "prnu_available": report.prnu_available,
-            "prnu_similarity": round(report.prnu_similarity, 4) if report.prnu_available else 0,
-            "prnu_details": report.prnu_details,
-            "details": report.details,
-            "heatmap_preview": heatmap_b64,
-            "elapsed_ms": round(report.elapsed_ms, 1),
-        })
+        try:
+            engine = AdvancedDetectors()
+            report = engine.analyze(source, template)
+            heatmap_b64 = ""
+            if report.heatmap is not None and report.heatmap.size > 0:
+                try:
+                    hm = np.nan_to_num(report.heatmap, nan=0.0, posinf=1.0, neginf=0.0)
+                    hm_uint8 = (np.clip(hm, 0, 1) * 255).astype(np.uint8)
+                    heatmap_vis = cv2.applyColorMap(hm_uint8, cv2.COLORMAP_HOT)
+                    heatmap_b64 = _img_to_b64(heatmap_vis, max_dim=900)
+                except Exception: heatmap_b64 = ""
+            return jsonify({
+                "ok": True,
+                "verdict": str(report.verdict),
+                "overall_risk": round(float(report.overall_risk), 4),
+                "is_suspicious": bool(report.is_suspicious),
+                "jpeg_ghost_score": round(float(report.jpeg_ghost_score), 4),
+                "jpeg_ghost_detected": bool(report.jpeg_ghost_detected),
+                "jpeg_ghost_details": str(report.jpeg_ghost_details),
+                "double_jpeg_score": round(float(report.double_jpeg_score), 4),
+                "double_jpeg_detected": bool(report.double_jpeg_detected),
+                "double_jpeg_details": str(report.double_jpeg_details),
+                "luminance_score": round(float(report.luminance_score), 4),
+                "luminance_anomaly": bool(report.luminance_anomaly),
+                "luminance_details": str(report.luminance_details),
+                "cfa_score": round(float(report.cfa_score), 4),
+                "cfa_anomaly": bool(report.cfa_anomaly),
+                "cfa_details": str(report.cfa_details),
+                "prnu_available": bool(report.prnu_available),
+                "prnu_similarity": round(float(report.prnu_similarity), 4) if report.prnu_available else 0,
+                "prnu_details": str(report.prnu_details),
+                "details": [str(d) for d in report.details],
+                "heatmap_preview": heatmap_b64,
+                "elapsed_ms": round(report.elapsed_ms, 1),
+            })
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
 
     @app.route("/api/copy-move", methods=["POST"])
     def detect_copy_move():
