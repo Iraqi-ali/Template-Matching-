@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Template Matching — مطابقة القوالب</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --border: #30363d;
+            --text: #c9d1d9;
+            --text-dim: #8b949e;
+            --accent: #58a6ff;
+            --accent-hover: #79c0ff;
+            --green: #3fb950;
+            --green-bg: #1a3a2a;
+            --orange: #d2991d;
+            --red: #f85149;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 0 0 1px var(--border);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', 'Tajawal', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        /* ── Header ── */
+        header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        header h1 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        header h1 .icon { font-size: 1.5rem; }
+        .lang-switch {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 6px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: 0.2s;
+        }
+        .lang-switch:hover { background: #21262d; }
+
+        /* ── Layout ── */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 20px;
+            min-height: calc(100vh - 56px);
+        }
+
+        /* ── Sidebar ── */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px;
+        }
+        .card h3 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Upload zones */
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius-sm);
+            padding: 30px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.2s;
+            position: relative;
+            overflow: hidden;
+            min-height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .upload-zone:hover { border-color: var(--accent); background: #1c2333; }
+        .upload-zone.drag-over { border-color: var(--green); background: var(--green-bg); }
+        .upload-zone.has-image { padding: 6px; border-style: solid; }
+        .upload-zone img { max-width: 100%; max-height: 180px; border-radius: 6px; display: block; }
+        .upload-zone .placeholder { color: var(--text-dim); font-size: 0.9rem; }
+        .upload-zone .placeholder .icon { font-size: 2rem; display: block; margin-bottom: 6px; }
+        .upload-zone input[type="file"] { display: none; }
+
+        .source-preview-wrapper {
+            position: relative;
+            cursor: crosshair;
+            display: inline-block;
+            width: 100%;
+        }
+        .crop-overlay {
+            position: absolute;
+            border: 2px dashed var(--green);
+            background: rgba(63, 185, 80, 0.12);
+            pointer-events: none;
+            display: none;
+        }
+
+        /* Controls */
+        .control-group {
+            margin-bottom: 10px;
+        }
+        .control-group label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            margin-bottom: 4px;
+            color: var(--text-dim);
+        }
+        .control-group label .val {
+            color: var(--accent);
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        select, input[type="range"] {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 0.85rem;
+        }
+        select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b949e'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: left 10px center; }
+        input[type="range"] { cursor: pointer; padding: 0; height: 6px; accent-color: var(--accent); }
+        input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+
+        .advanced-toggle {
+            font-size: 0.8rem;
+            color: var(--accent);
+            cursor: pointer;
+            user-select: none;
+            margin-top: 4px;
+            display: inline-block;
+        }
+        .advanced-settings { display: none; margin-top: 8px; }
+
+        /* Buttons */
+        .btn {
+            width: 100%;
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-primary {
+            background: var(--green);
+            color: #000;
+            font-size: 1rem;
+            padding: 14px;
+        }
+        .btn-primary:hover { background: #46c756; transform: translateY(-1px); }
+        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .btn-secondary {
+            background: #21262d;
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { background: #30363d; }
+        .btn-accent {
+            background: #1f6feb;
+            color: #fff;
+        }
+        .btn-accent:hover { background: #388bfd; }
+
+        .btn-row { display: flex; gap: 8px; }
+        .btn-row .btn { flex: 1; }
+
+        /* ── Main Content ── */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .result-area {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .result-area .empty-state {
+            text-align: center;
+            color: var(--text-dim);
+        }
+        .result-area .empty-state .icon { font-size: 4rem; display: block; margin-bottom: 12px; }
+        .result-area img {
+            max-width: 100%;
+            max-height: 70vh;
+            border-radius: 8px;
+        }
+
+        /* Stats bar */
+        .stats-bar {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .stat {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 12px 18px;
+            flex: 1;
+            min-width: 100px;
+        }
+        .stat .num {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .stat .label { font-size: 0.75rem; color: var(--text-dim); }
+
+        /* Matches table */
+        .matches-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .matches-table th {
+            text-align: right;
+            padding: 8px 12px;
+            color: var(--text-dim);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+        }
+        .matches-table td {
+            padding: 6px 12px;
+            border-bottom: 1px solid #21262d;
+        }
+        .matches-table .conf-high { color: var(--green); font-weight: 700; }
+        .matches-table .conf-med { color: var(--orange); }
+        .matches-table .conf-low { color: var(--text-dim); }
+        .matches-table tbody tr:hover { background: #1c2333; }
+
+        /* Loading spinner */
+        .spinner {
+            display: none;
+            width: 40px; height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--red);
+            color: #fff;
+            padding: 10px 24px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .toast.show { opacity: 1; }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .container { grid-template-columns: 1fr; }
+            .stats-bar { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1><span class="icon">🔍</span> <span data-lang="ar">مطابقة القوالب</span><span data-lang="en" style="display:none">Template Matching</span></h1>
+    <button class="lang-switch" onclick="toggleLang()" data-lang="ar">🇬🇧 English</button>
+</header>
+
+<div class="container">
+    <!-- ═══════════ SIDEBAR ═══════════ -->
+    <div class="sidebar">
+        <!-- Source image -->
+        <div class="card">
+            <h3 data-lang="ar">📷 الصورة المصدرية</h3>
+            <div class="upload-zone" id="sourceZone" onclick="document.getElementById('sourceInput').click()">
+                <div class="placeholder" id="sourcePlaceholder">
+                    <span class="icon">🖼️</span>
+                    <span data-lang="ar">اسحب الصورة هنا أو اضغط للتحميل</span>
+                </div>
+                <input type="file" id="sourceInput" accept="image/*" onchange="uploadImage('source', this)">
+            </div>
+        </div>
+
+        <!-- Template image -->
+        <div class="card">
+            <h3 data-lang="ar">🎯 صورة القالب</h3>
+            <div class="upload-zone" id="templateZone" onclick="document.getElementById('templateInput').click()">
+                <div class="placeholder" id="templatePlaceholder">
+                    <span class="icon">🎯</span>
+                    <span data-lang="ar">اسحب صورة القالب هنا أو اضغط للتحميل</span>
+                </div>
+                <input type="file" id="templateInput" accept="image/*" onchange="uploadImage('template', this)">
+            </div>
+            <button class="btn btn-secondary" style="margin-top:8px" onclick="enableCropMode()" id="cropBtn" disabled data-lang="ar">
+                ✂️ قص القالب من الصورة المصدرية
+            </button>
+        </div>
+
+        <!-- Match controls -->
+        <div class="card">
+            <h3 data-lang="ar">⚙️ إعدادات المطابقة</h3>
+
+            <div class="control-group">
+                <label><span data-lang="ar">طريقة المطابقة</span></label>
+                <select id="methodSelect">
+                    <option value="TM_CCOEFF">Correlation Coefficient</option>
+                    <option value="TM_CCOEFF_NORMED" selected>Correlation Coefficient (Normalized) ⭐</option>
+                    <option value="TM_CCORR">Cross-Correlation</option>
+                    <option value="TM_CCORR_NORMED">Cross-Correlation (Normalized)</option>
+                    <option value="TM_SQDIFF">Squared Difference</option>
+                    <option value="TM_SQDIFF_NORMED">Squared Difference (Normalized)</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label><span data-lang="ar">العتبة</span> <span class="val" id="thresholdVal">0.80</span></label>
+                <input type="range" id="thresholdSlider" min="0.10" max="0.99" step="0.01" value="0.80" oninput="document.getElementById('thresholdVal').textContent=this.value">
+            </div>
+
+            <div class="control-group">
+                <label style="justify-content:flex-start;gap:8px;align-items:center;cursor:pointer">
+                    <input type="checkbox" id="multiScaleCheck">
+                    <span data-lang="ar">مطابقة متعددة المقاييس</span>
+                </label>
+            </div>
+
+            <span class="advanced-toggle" onclick="toggleAdvanced()" data-lang="ar">⚙️ إعدادات متقدمة ▾</span>
+            <div class="advanced-settings" id="advancedSettings">
+                <div class="control-group">
+                    <label><span data-lang="ar">الحد الأدنى للمقياس</span> <span class="val" id="scaleMinVal">0.3</span></label>
+                    <input type="range" id="scaleMin" min="0.1" max="2.0" step="0.1" value="0.3" oninput="document.getElementById('scaleMinVal').textContent=this.value">
+                </div>
+                <div class="control-group">
+                    <label><span data-lang="ar">الحد الأقصى للمقياس</span> <span class="val" id="scaleMaxVal">2.5</span></label>
+                    <input type="range" id="scaleMax" min="0.5" max="5.0" step="0.1" value="2.5" oninput="document.getElementById('scaleMaxVal').textContent=this.value">
+                </div>
+                <div class="control-group">
+                    <label><span data-lang="ar">خطوات القياس</span> <span class="val" id="scaleStepsVal">25</span></label>
+                    <input type="range" id="scaleSteps" min="5" max="60" step="1" value="25" oninput="document.getElementById('scaleStepsVal').textContent=this.value">
+                </div>
+                <div class="control-group">
+                    <label><span data-lang="ar">عتبة NMS</span> <span class="val" id="nmsThreshVal">0.3</span></label>
+                    <input type="range" id="nmsThresh" min="0.05" max="0.8" step="0.05" value="0.3" oninput="document.getElementById('nmsThreshVal').textContent=this.value">
+                </div>
+            </div>
+
+            <div class="btn-row" style="margin-top: 14px">
+                <button class="btn btn-primary" id="matchBtn" onclick="runMatch()" disabled data-lang="ar">
+                    🔍 تشغيل المطابقة
+                </button>
+            </div>
+            <div class="btn-row" style="margin-top: 6px">
+                <button class="btn btn-accent" id="compareBtn" onclick="runCompare()" disabled data-lang="ar">
+                    📊 مقارنة جميع الطرق
+                </button>
+                <button class="btn btn-secondary" id="downloadBtn" onclick="downloadResult()" disabled data-lang="ar">
+                    💾 تحميل النتيجة
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ MAIN CONTENT ═══════════ -->
+    <div class="main-content">
+        <!-- Stats -->
+        <div class="stats-bar" id="statsBar" style="display:none">
+            <div class="stat"><div class="num" id="statMatches">-</div><div class="label" data-lang="ar">التطابقات</div></div>
+            <div class="stat"><div class="num" id="statTime">-</div><div class="label" data-lang="ar">الزمن (مللي ثانية)</div></div>
+            <div class="stat"><div class="num" id="statMethod">-</div><div class="label" data-lang="ar">الطريقة</div></div>
+            <div class="stat"><div class="num" id="statThreshold">-</div><div class="label" data-lang="ar">العتبة</div></div>
+        </div>
+
+        <!-- Result image -->
+        <div class="result-area" id="resultArea">
+            <div class="empty-state" id="emptyState">
+                <span class="icon">🖼️</span>
+                <p data-lang="ar">قم بتحميل الصور واضغط "تشغيل المطابقة" لعرض النتائج هنا</p>
+            </div>
+            <img id="resultImage" style="display:none" alt="Result">
+            <div class="spinner" id="spinner"></div>
+        </div>
+
+        <!-- Matches table -->
+        <div class="card" id="matchesCard" style="display:none">
+            <h3 data-lang="ar">📋 قائمة التطابقات</h3>
+            <div style="max-height:200px;overflow:auto">
+                <table class="matches-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>X</th>
+                            <th>Y</th>
+                            <th data-lang="ar">العرض</th>
+                            <th data-lang="ar">الارتفاع</th>
+                            <th data-lang="ar">الثقة</th>
+                            <th data-lang="ar">المقياس</th>
+                        </tr>
+                    </thead>
+                    <tbody id="matchesBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Comparison result -->
+        <div class="result-area" id="comparisonArea" style="display:none; min-height:200px">
+            <img id="comparisonImage" style="max-width:100%">
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+    // ═══════════════════════════════════════════
+    // State
+    // ═══════════════════════════════════════════
+    let hasSource = false;
+    let hasTemplate = false;
+    let cropMode = false;
+    let lang = 'ar';
+    let lastResultData = null;
+
+    // ═══════════════════════════════════════════
+    // Language
+    // ═══════════════════════════════════════════
+    function toggleLang() {
+        lang = lang === 'ar' ? 'en' : 'ar';
+        document.querySelectorAll('[data-lang]').forEach(el => {
+            el.style.display = el.dataset.lang === lang ? '' : 'none';
+        });
+        const btn = document.querySelector('.lang-switch');
+        btn.textContent = lang === 'ar' ? '🇬🇧 English' : '🇸🇦 العربية';
+        document.dir = lang === 'ar' ? 'rtl' : 'ltr';
+    }
+
+    // ═══════════════════════════════════════════
+    // Upload
+    // ═══════════════════════════════════════════
+    async function uploadImage(type, input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('image', file);
+
+        try {
+            const endpoint = type === 'source' ? '/api/upload-source' : '/api/upload-template';
+            const res = await fetch(endpoint, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+
+            const zone = document.getElementById(type === 'source' ? 'sourceZone' : 'templateZone');
+            const placeholder = document.getElementById(type === 'source' ? 'sourcePlaceholder' : 'templatePlaceholder');
+
+            zone.classList.add('has-image');
+            placeholder.innerHTML = `<img src="${data.preview}" alt="${type}">`;
+
+            if (type === 'source') { hasSource = true; document.getElementById('cropBtn').disabled = false; }
+            else hasTemplate = true;
+
+            updateButtons();
+        } catch (e) {
+            showToast(e.message);
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    // Drag & Drop
+    // ═══════════════════════════════════════════
+    ['sourceZone', 'templateZone'].forEach(id => {
+        const zone = document.getElementById(id);
+        zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+        zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+        zone.addEventListener('drop', e => {
+            e.preventDefault();
+            zone.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (!file) return;
+            const type = id === 'sourceZone' ? 'source' : 'template';
+            const input = document.getElementById(type + 'Input');
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+            uploadImage(type, input);
+        });
+    });
+
+    // ═══════════════════════════════════════════
+    // Crop mode
+    // ═══════════════════════════════════════════
+    function enableCropMode() {
+        if (!hasSource) return;
+        const zone = document.getElementById('sourceZone');
+        const img = zone.querySelector('img');
+        if (!img) return;
+
+        cropMode = !cropMode;
+        const btn = document.getElementById('cropBtn');
+        btn.style.background = cropMode ? 'var(--green)' : '';
+        btn.textContent = cropMode ? '✅ ' + (lang==='ar'?'حدد المنطقة في الصورة أعلاه':'Select region above') : '✂️ ' + (lang==='ar'?'قص القالب من الصورة المصدرية':'Crop Template from Source');
+
+        if (!cropMode) {
+            const overlay = document.getElementById('cropOverlay');
+            if (overlay) overlay.style.display = 'none';
+            return;
+        }
+
+        // Create overlay if needed
+        let overlay = document.getElementById('cropOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'crop-overlay';
+            overlay.id = 'cropOverlay';
+            img.parentElement.appendChild(overlay);
+        }
+
+        let startX, startY;
+        const wrapper = img.parentElement;
+
+        wrapper.onmousedown = e => {
+            if (!cropMode) return;
+            const rect = img.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+            overlay.style.display = 'block';
+            overlay.style.left = startX + 'px';
+            overlay.style.top = startY + 'px';
+            overlay.style.width = '0px';
+            overlay.style.height = '0px';
+        };
+
+        wrapper.onmousemove = e => {
+            if (!cropMode || !startX) return;
+            const rect = img.getBoundingClientRect();
+            const curX = e.clientX - rect.left;
+            const curY = e.clientY - rect.top;
+            const x = Math.min(startX, curX);
+            const y = Math.min(startY, curY);
+            const w = Math.abs(curX - startX);
+            const h = Math.abs(curY - startY);
+            overlay.style.left = x + 'px';
+            overlay.style.top = y + 'px';
+            overlay.style.width = w + 'px';
+            overlay.style.height = h + 'px';
+        };
+
+        wrapper.onmouseup = async e => {
+            if (!cropMode || !startX) return;
+            const rect = img.getBoundingClientRect();
+            const curX = e.clientX - rect.left;
+            const curY = e.clientY - rect.top;
+            const x = Math.round(Math.min(startX, curX));
+            const y = Math.round(Math.min(startY, curY));
+            const w = Math.round(Math.abs(curX - startX));
+            const h = Math.round(Math.abs(curY - startY));
+
+            startX = null;
+            if (w < 5 || h < 5) return;
+
+            // Scale back to original image coordinates
+            const naturalW = parseInt(img.naturalWidth || img.width);
+            const naturalH = parseInt(img.naturalHeight || img.height);
+            const displayW = rect.width;
+            const displayH = rect.height;
+            const scaleX = naturalW / displayW;
+            const scaleY = naturalH / displayH;
+
+            const cx = Math.round(x * scaleX);
+            const cy = Math.round(y * scaleY);
+            const cw = Math.round(w * scaleX);
+            const ch = Math.round(h * scaleY);
+
+            try {
+                const res = await fetch('/api/crop-template', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ x: cx, y: cy, w: cw, h: ch })
+                });
+                const data = await res.json();
+                if (!data.ok) throw new Error(data.error);
+
+                const tplZone = document.getElementById('templateZone');
+                const tplPlaceholder = document.getElementById('templatePlaceholder');
+                tplZone.classList.add('has-image');
+                tplPlaceholder.innerHTML = `<img src="${data.preview}" alt="template">`;
+                hasTemplate = true;
+                updateButtons();
+
+                // Exit crop mode
+                cropMode = false;
+                document.getElementById('cropBtn').style.background = '';
+                document.getElementById('cropBtn').textContent = '✂️ ' + (lang==='ar'?'قص القالب من الصورة المصدرية':'Crop Template from Source');
+                overlay.style.display = 'none';
+            } catch (err) {
+                showToast(err.message);
+            }
+        };
+    }
+
+    // ═══════════════════════════════════════════
+    // Run matching
+    // ═══════════════════════════════════════════
+    async function runMatch() {
+        if (!hasSource || !hasTemplate) return;
+        setLoading(true);
+
+        const payload = {
+            method: document.getElementById('methodSelect').value,
+            threshold: parseFloat(document.getElementById('thresholdSlider').value),
+            multi_scale: document.getElementById('multiScaleCheck').checked,
+            scale_min: parseFloat(document.getElementById('scaleMin').value),
+            scale_max: parseFloat(document.getElementById('scaleMax').value),
+            scale_steps: parseInt(document.getElementById('scaleSteps').value),
+            nms_threshold: parseFloat(document.getElementById('nmsThresh').value),
+            max_matches: 50,
+        };
+
+        try {
+            const res = await fetch('/api/match', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+
+            lastResultData = data;
+            showResult(data);
+            document.getElementById('downloadBtn').disabled = false;
+        } catch (e) {
+            showToast(e.message);
+        }
+        setLoading(false);
+    }
+
+    async function runCompare() {
+        if (!hasSource || !hasTemplate) return;
+        setLoading(true);
+
+        try {
+            const res = await fetch('/api/compare', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ threshold: parseFloat(document.getElementById('thresholdSlider').value) }),
+            });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+
+            document.getElementById('comparisonArea').style.display = 'flex';
+            document.getElementById('comparisonImage').src = data.comparison_preview;
+            document.getElementById('comparisonArea').scrollIntoView({ behavior: 'smooth' });
+        } catch (e) {
+            showToast(e.message);
+        }
+        setLoading(false);
+    }
+
+    // ═══════════════════════════════════════════
+    // Display result
+    // ═══════════════════════════════════════════
+    function showResult(data) {
+        // Stats
+        document.getElementById('statsBar').style.display = 'flex';
+        document.getElementById('statMatches').textContent = data.match_count;
+        document.getElementById('statTime').textContent = data.elapsed_ms;
+        document.getElementById('statMethod').textContent = data.method.split('(')[0].trim();
+        document.getElementById('statThreshold').textContent = data.threshold;
+
+        // Image
+        document.getElementById('emptyState').style.display = 'none';
+        const resultImg = document.getElementById('resultImage');
+        resultImg.src = data.result_preview;
+        resultImg.style.display = 'block';
+
+        // Matches table
+        const card = document.getElementById('matchesCard');
+        const tbody = document.getElementById('matchesBody');
+        tbody.innerHTML = '';
+
+        if (data.matches.length > 0) {
+            card.style.display = 'block';
+            data.matches.forEach(m => {
+                let confClass = m.confidence >= 0.9 ? 'conf-high' : m.confidence >= 0.6 ? 'conf-med' : 'conf-low';
+                tbody.innerHTML += `<tr>
+                    <td>${m.id}</td><td>${m.x}</td><td>${m.y}</td><td>${m.width}</td><td>${m.height}</td>
+                    <td class="${confClass}">${m.confidence.toFixed(4)}</td><td>${m.scale.toFixed(2)}x</td>
+                </tr>`;
+            });
+        } else {
+            card.style.display = 'none';
+        }
+
+        document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function downloadResult() {
+        window.open('/api/download-result', '_blank');
+    }
+
+    // ═══════════════════════════════════════════
+    // Helpers
+    // ═══════════════════════════════════════════
+    function updateButtons() {
+        const ready = hasSource && hasTemplate;
+        document.getElementById('matchBtn').disabled = !ready;
+        document.getElementById('compareBtn').disabled = !ready;
+    }
+
+    function setLoading(on) {
+        const spinner = document.getElementById('spinner');
+        const resultImg = document.getElementById('resultImage');
+        spinner.style.display = on ? 'block' : 'none';
+        if (on) resultImg.style.display = 'none';
+    }
+
+    function toggleAdvanced() {
+        const el = document.getElementById('advancedSettings');
+        el.style.display = el.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    // ═══════════════════════════════════════════
+    // Keyboard shortcut
+    // ═══════════════════════════════════════════
+    document.addEventListener('keydown', e => {
+        if (e.ctrlKey && e.key === 'Enter') runMatch();
+    });
+</script>
+</body>
+</html>
