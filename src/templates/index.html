@@ -94,6 +94,11 @@ td{padding:6px 10px;border-bottom:1px solid #1a2a3a}tbody tr:hover{background:rg
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 28px;border-radius:24px;font-size:.82rem;font-weight:600;z-index:9999;opacity:0;transition:.3s;pointer-events:none;box-shadow:0 8px 30px rgba(0,0,0,.4)}
 .toast.show{opacity:1}.toast-ok{background:var(--green);color:#000}.toast-err{background:var(--red);color:#fff}.toast-info{background:var(--accent);color:#fff}
 
+/* Progress Bar */
+.progress-wrap{display:none;margin:8px 0;background:var(--surface2);border-radius:10px;overflow:hidden;height:8px}
+.progress-fill{height:100%;border-radius:10px;background:linear-gradient(90deg,var(--accent),var(--green2));width:0%;transition:width .3s}
+.progress-text{display:none;font-size:.72rem;color:var(--accent2);margin-top:2px;text-align:center}
+
 .vault-select{width:100%;margin-top:6px;font-size:.78rem}
 .vault-actions{display:flex;gap:6px;margin-top:6px}
 
@@ -246,6 +251,14 @@ td{padding:6px 10px;border-bottom:1px solid #1a2a3a}tbody tr:hover{background:rg
     <div id="metaContent" style="font-size:.78rem;color:var(--text2)"></div>
   </div>
 
+  <!-- Status/Progress Bar -->
+  <div class="result-card" id="statusCard" style="display:none;border-color:var(--accent)">
+    <h3>⏳ جاري التحليل... <span id="statusStep" style="color:var(--accent2)"></span></h3>
+    <div class="progress-wrap" id="progWrap"><div class="progress-fill" id="progFill"></div></div>
+    <div class="progress-text" id="progText"></div>
+    <div id="statusDetails" style="font-size:.75rem;color:var(--text3);margin-top:6px"></div>
+  </div>
+
   <div class="result-card glow-orange" id="cmCard">
     <h3>📋 كشف النسخ واللصق <span class="badge" id="cmBadge"></span></h3>
     <div class="stats" style="margin-bottom:8px">
@@ -289,7 +302,7 @@ document.querySelectorAll('.tab-btn').forEach(b=>{b.onclick=function(){
   if(S.currentTab==='vault') vaultList();
 }});
 
-function hideCards(){['matchCard','forensicsCard','sigCard','metaCard','cmCard','fontCard','scoreCard'].forEach(id=>document.getElementById(id).style.display='none')}
+function hideCards(){['matchCard','forensicsCard','sigCard','metaCard','cmCard','fontCard','scoreCard','statusCard'].forEach(id=>document.getElementById(id).style.display='none')}
 
 // Upload
 async function upload(type,input){
@@ -505,14 +518,92 @@ async function runMetadata(){
   }catch(e){toast(e.message,'err')}loading(false);
 }
 
+// COPY-MOVE
+async function runCopyMove(){
+  if(!S.hasSrc)return;loading(true,'🔍 جاري فحص النسخ واللصق...');hideCards();setProgress(20,'تقسيم الصورة إلى كتل...');
+  try{var r=await fetch('/api/copy-move',{method:'POST'});var d=await r.json();if(!d.ok)throw new Error(d.error);
+    setProgress(80,'تحليل النتائج...');
+    showImg(d.annotated_preview);
+    showStats(d.has_clones?'🔴 نسخ مكتشف':'✅ سليم',d.clone_count+' نسخة',(d.confidence*100).toFixed(0)+'%',d.elapsed_ms+' ms');
+    var card=document.getElementById('cmCard');card.style.display='block';
+    var badge=document.getElementById('cmBadge');badge.textContent=d.has_clones?'🔴 مكتشف':'✅ سليم';
+    badge.style.background=d.has_clones?'var(--red)':'var(--green)';badge.style.color='#fff';
+    document.getElementById('cmCount').textContent=d.clone_count;
+    document.getElementById('cmConf').textContent=(d.confidence*100).toFixed(0)+'%';
+    document.getElementById('cmTime').textContent=d.elapsed_ms+' ms';
+    document.getElementById('cmDetails').innerHTML=(d.details||[]).join('<br>');
+    setStatus('✅ اكتمل تحليل النسخ واللصق. تم مسح '+d.clone_count+' منطقة من '+grayInfo()+'. '+(d.has_clones?'⚠ تم اكتشاف تزوير بالنسخ واللصق!':'✅ لم يتم اكتشاف نسخ مشبوه.'));
+    setProgress(100,'اكتمل');setTimeout(clearStatus,2500);
+  }catch(e){toast(e.message,'err');clearStatus()}loading(false);
+}
+
+// FONT
+async function runFontAnalysis(){
+  if(!S.hasSrc)return;loading(true,'🔤 جاري تحليل تناسق الخطوط...');hideCards();setProgress(30,'استخراج مناطق النص...');
+  try{var r=await fetch('/api/font-analysis',{method:'POST'});var d=await r.json();if(!d.ok)throw new Error(d.error);
+    setProgress(70,'مقارنة الأحجام والأوزان...');
+    if(d.annotated_preview)showImg(d.annotated_preview);
+    showStats(d.is_consistent?'✅ متسق':'⚠ غير متسق',d.inconsistent_count+' منطقة','',d.elapsed_ms+' ms');
+    var card=document.getElementById('fontCard');card.style.display='block';
+    var badge=document.getElementById('fontBadge');badge.textContent=d.is_consistent?'✅ متسق':'⚠ غير متسق';
+    badge.style.background=d.is_consistent?'var(--green)':'var(--orange)';badge.style.color='#fff';
+    document.getElementById('fontAvgH').textContent=d.avg_height.toFixed(1)+'px';
+    document.getElementById('fontAvgW').textContent=d.avg_weight.toFixed(2);
+    document.getElementById('fontVar').textContent='±'+(d.height_variation*100).toFixed(1)+'%';
+    document.getElementById('fontInc').textContent=d.inconsistent_count;
+    document.getElementById('fontDetails').innerHTML=(d.details||[]).join('<br>');
+    var why=d.is_consistent?'جميع الخطوط متسقة — لا يوجد دليل على تعديل النص.':'⚠ تم اكتشاف '+d.inconsistent_count+' منطقة غير متسقة الخطوط! قد يشير ذلك إلى إضافة أحرف أو تغيير خطوط في المستند. تباين الارتفاع: ±'+(d.height_variation*100).toFixed(1)+'%، تباين السمك: ±'+(d.weight_variation*100).toFixed(1)+'%. المتوسط: '+d.avg_height.toFixed(0)+'px ارتفاع، '+d.avg_weight.toFixed(2)+' سمك.';
+    setStatus('🔤 '+why);setProgress(100,'اكتمل');setTimeout(clearStatus,3000);
+  }catch(e){toast(e.message,'err');clearStatus()}loading(false);
+}
+
+// AUTHENTICITY SCORE
+async function runAuthScore(){
+  hideCards();
+  var hasImg=S.hasSrc||S.hasTpl;
+  if(!hasImg){loading(true,'💯 جاري حساب الأصالة...');setProgress(10,'تحميل البصمات...');}
+  else{loading(true,'💯 جاري حساب درجة الأصالة الشاملة...');setProgress(15,'جاري تحليل المستند...');}
+  try{var r=await fetch('/api/authenticity-score',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    var d=await r.json();if(!d.ok)throw new Error(d.error);
+    setProgress(90,'تجميع النتائج...');
+    var el=document.getElementById('scoreFullResult');
+    var clr=d.overall_score>=70?'var(--green)':d.overall_score>=40?'var(--orange)':'var(--red)';
+    el.innerHTML='<div style="font-size:4rem;text-align:center;font-weight:900;margin:16px 0;color:'+clr+'">'+d.overall_score+'%</div>'
+      +'<div style="text-align:center;font-size:1.3rem;margin-bottom:16px;font-weight:700;color:'+clr+'">'+d.verdict+'</div>'
+      +'<div style="margin:12px 0;padding:8px;background:var(--surface2);border-radius:8px;font-size:.75rem;color:var(--text2)">📊 <b>تفاصيل التحليل:</b><br>'+(d.weighted_breakdown||[]).join('<br>')+'</div>'
+      +(d.risk_factors||[]).length?'<div style="margin-top:10px;padding:8px;background:rgba(239,68,68,.1);border-radius:8px;color:var(--red);font-size:.8rem">⚠ <b>عوامل الخطر:</b> '+d.risk_factors.join(' | ')+'</div>':''
+      +(d.recommendations||[]).map(function(x){return'<div style="color:var(--text3);font-size:.75rem;margin:3px 0;padding:4px 8px;background:var(--surface2);border-radius:4px">💡 '+x+'</div>'}).join('');
+    var card=document.getElementById('scoreCard');card.style.display='block';
+    document.getElementById('statsBar').style.display='flex';
+    document.getElementById('st1').textContent=d.verdict;document.getElementById('st1').style.color=clr;
+    document.getElementById('st2').textContent=d.overall_score+'%';document.getElementById('st2').style.color=clr;
+    document.getElementById('st3').textContent=Object.keys(d.category_scores||{}).length+' تحليل';
+    document.getElementById('st4').textContent='';
+    setStatus('💯 درجة الأصالة الشاملة: '+d.overall_score+'% — '+d.verdict+'. تم تحليل '+(Object.keys(d.category_scores||{}).length)+' عوامل. '+(d.recommendations||[]).join(' '));
+    setProgress(100,'اكتمل');setTimeout(clearStatus,3000);
+  }catch(e){toast(e.message,'err');clearStatus()}loading(false);
+}
+
+function grayInfo(){return S.hasSrc?'المستند بالكامل':''}
+
 // HELPERS
 function showImg(b64){document.getElementById('emptyState').style.display='none';var img=document.getElementById('resultImg');img.src=b64||'';img.style.display=b64?'block':'none'}
 function showStats(v1,v2,v3,v4){document.getElementById('statsBar').style.display='flex';document.getElementById('st1').textContent=v1;document.getElementById('st2').textContent=v2;document.getElementById('st3').textContent=v3;document.getElementById('st4').textContent=v4}
-function loading(on){document.getElementById('spinner').style.display=on?'block':'none';if(on)document.getElementById('resultImg').style.display='none'}
+function loading(on,msg){
+  document.getElementById('spinner').style.display=on?'block':'none';
+  if(on)document.getElementById('resultImg').style.display='none';
+  var sc=document.getElementById('statusCard');
+  if(on){sc.style.display='block';document.getElementById('statusStep').textContent=msg||'جاري التحليل...';
+    document.getElementById('progWrap').style.display='block';document.getElementById('progText').style.display='block';
+  }else{sc.style.display='none';}
+}
+function setProgress(pct,msg){document.getElementById('progFill').style.width=pct+'%';document.getElementById('progText').textContent=msg||(''+pct+'%');}
+function setStatus(text){document.getElementById('statusDetails').innerHTML=text;}
+function clearStatus(){document.getElementById('statusCard').style.display='none';}
 function downloadResult(){window.open('/api/download-result','_blank')}
 function toggleLang(){S.lang=S.lang==='ar'?'en':'ar';document.dir=S.lang==='ar'?'rtl':'ltr';document.getElementById('langBtn').textContent=S.lang==='ar'?'🇬🇧 English':'🇸🇦 العربية'}
 function toast(msg,type){var t=document.getElementById('toast');t.textContent=msg;t.className='toast toast-'+(type||'info')+' show';setTimeout(function(){t.classList.remove('show')},3000)}
-document.addEventListener('keydown',function(e){if(e.ctrlKey&&e.key==='Enter'){if(S.currentTab==='match')runMatch();else if(S.currentTab==='forensics')runForensics();else if(S.currentTab==='signature')runSignature()}});
+document.addEventListener('keydown',function(e){if(e.ctrlKey&&e.key==='Enter'){if(S.currentTab==='match')runMatch();else if(S.currentTab==='forensics')runForensics();else if(S.currentTab==='signature')runSignature();else if(S.currentTab==='copymove')runCopyMove();else if(S.currentTab==='font')runFontAnalysis();else if(S.currentTab==='score')runAuthScore()}});
 </script>
 </body>
 </html>
