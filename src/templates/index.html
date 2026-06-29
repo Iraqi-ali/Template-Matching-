@@ -1,1238 +1,471 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Template Matching — مطابقة القوالب</title>
-    <style>
-        :root {
-            --bg: #0d1117;
-            --surface: #161b22;
-            --border: #30363d;
-            --text: #c9d1d9;
-            --text-dim: #8b949e;
-            --accent: #58a6ff;
-            --accent-hover: #79c0ff;
-            --green: #3fb950;
-            --green-bg: #1a3a2a;
-            --orange: #d2991d;
-            --red: #f85149;
-            --radius: 12px;
-            --radius-sm: 8px;
-            --shadow: 0 0 0 1px var(--border);
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🛡️ نظام كشف التزوير الجنائي | Forensic Document Analysis</title>
+<style>
+:root {
+  --bg: #0a0e17; --surface: #111827; --surface2: #1a2332;
+  --border: #1e3a5f; --accent: #3b82f6; --accent2: #60a5fa;
+  --green: #10b981; --green2: #34d399; --red: #ef4444; --red2: #f87171;
+  --orange: #f59e0b; --purple: #8b5cf6; --text: #e2e8f0;
+  --text2: #94a3b8; --text3: #64748b;
+  --radius: 14px; --radius-sm: 10px;
+  --shadow: 0 4px 24px rgba(0,0,0,.3);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI','Tajawal',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+header{
+  background:rgba(17,24,39,.95); backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border); padding:10px 28px;
+  display:flex; align-items:center; justify-content:space-between;
+  position:sticky; top:0; z-index:1000;
+}
+header .logo{display:flex;align-items:center;gap:12px;font-size:1.15rem;font-weight:700}
+header .logo .shield{font-size:1.6rem}
+.lang-btn{
+  background:var(--surface2); border:1px solid var(--border); color:var(--text2);
+  padding:6px 16px; border-radius:20px; cursor:pointer; font-size:.8rem; transition:.2s;
+}
+.lang-btn:hover{background:var(--border);color:var(--text)}
 
-        body {
-            font-family: 'Segoe UI', 'Tajawal', system-ui, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            line-height: 1.6;
-        }
+.container{max-width:1500px;margin:0 auto;padding:16px 20px;display:grid;grid-template-columns:420px 1fr;gap:18px;min-height:calc(100vh - 62px)}
 
-        /* ── Header ── */
-        header {
-            background: var(--surface);
-            border-bottom: 1px solid var(--border);
-            padding: 12px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-        header h1 {
-            font-size: 1.2rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        header h1 .icon { font-size: 1.5rem; }
-        .lang-switch {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 6px 14px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: 0.2s;
-        }
-        .lang-switch:hover { background: #21262d; }
+.sidebar{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
+.card h3{font-size:.82rem;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dot-blue{background:var(--accent)}.dot-green{background:var(--green)}
+.dot-red{background:var(--red)}.dot-purple{background:var(--purple)}.dot-orange{background:var(--orange)}
 
-        /* ── Layout ── */
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-            display: grid;
-            grid-template-columns: 380px 1fr;
-            gap: 20px;
-            min-height: calc(100vh - 56px);
-        }
+.upload-box{border:2px dashed var(--border);border-radius:var(--radius-sm);padding:24px 16px;text-align:center;cursor:pointer;transition:.25s;min-height:100px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.upload-box:hover{border-color:var(--accent2);background:rgba(59,130,246,.05)}
+.upload-box.has-img{padding:8px;border-style:solid;border-color:var(--accent)}
+.upload-box img{max-width:100%;max-height:140px;border-radius:8px}
+.upload-box .placeholder{color:var(--text3);font-size:.85rem}
+.upload-box .placeholder .big{font-size:2.2rem;display:block;margin-bottom:6px}
+.upload-box input[type=file]{display:none}
 
-        /* ── Sidebar ── */
-        .sidebar {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        .card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 18px;
-        }
-        .card h3 {
-            font-size: 0.9rem;
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
+.tab-nav{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tab-btn{padding:7px 14px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:.78rem;transition:.2s;white-space:nowrap}
+.tab-btn:hover{border-color:var(--accent);color:var(--text)}
+.tab-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 
-        /* Upload zones */
-        .upload-zone {
-            border: 2px dashed var(--border);
-            border-radius: var(--radius-sm);
-            padding: 30px 16px;
-            text-align: center;
-            cursor: pointer;
-            transition: 0.2s;
-            position: relative;
-            overflow: hidden;
-            min-height: 120px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .upload-zone:hover { border-color: var(--accent); background: #1c2333; }
-        .upload-zone.drag-over { border-color: var(--green); background: var(--green-bg); }
-        .upload-zone.has-image { padding: 6px; border-style: solid; }
-        .upload-zone img { max-width: 100%; max-height: 180px; border-radius: 6px; display: block; }
-        .upload-zone .placeholder { color: var(--text-dim); font-size: 0.9rem; }
-        .upload-zone .placeholder .icon { font-size: 2rem; display: block; margin-bottom: 6px; }
-        .upload-zone input[type="file"] { display: none; }
+.ctrl{margin-bottom:10px}
+.ctrl label{display:flex;justify-content:space-between;font-size:.8rem;color:var(--text2);margin-bottom:4px}
+.ctrl .val{color:var(--accent2);font-weight:600;font-family:monospace}
+select,input[type=range]{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:.82rem}
+select{cursor:pointer}input[type=range]{padding:0;height:6px;accent-color:var(--accent);cursor:pointer}
 
-        .source-preview-wrapper {
-            position: relative;
-            cursor: crosshair;
-            display: inline-block;
-            width: 100%;
-        }
-        .crop-overlay {
-            position: absolute;
-            border: 2px dashed var(--green);
-            background: rgba(63, 185, 80, 0.12);
-            pointer-events: none;
-            display: none;
-        }
+.btn{width:100%;padding:11px 20px;border:none;border-radius:var(--radius-sm);font-size:.85rem;font-weight:600;cursor:pointer;transition:.25s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-blue{background:var(--accent);color:#fff}.btn-green{background:var(--green);color:#000}
+.btn-red{background:var(--red);color:#fff}.btn-orange{background:var(--orange);color:#000}
+.btn-purple{background:var(--purple);color:#fff}.btn-ghost{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.btn-sm{padding:7px 12px;font-size:.75rem}.btn-row{display:flex;gap:7px;margin-top:8px}.btn-row .btn{flex:1}
 
-        /* Controls */
-        .control-group {
-            margin-bottom: 10px;
-        }
-        .control-group label {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.85rem;
-            margin-bottom: 4px;
-            color: var(--text-dim);
-        }
-        .control-group label .val {
-            color: var(--accent);
-            font-weight: 600;
-            font-family: 'JetBrains Mono', monospace;
-        }
-        select, input[type="range"] {
-            width: 100%;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            color: var(--text);
-            border-radius: 6px;
-            padding: 8px 10px;
-            font-size: 0.85rem;
-        }
-        select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b949e'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: left 10px center; }
-        input[type="range"] { cursor: pointer; padding: 0; height: 6px; accent-color: var(--accent); }
-        input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+.main{display:flex;flex-direction:column;gap:14px}
+.result-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);min-height:350px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;box-shadow:var(--shadow);flex-direction:column}
+.result-panel img{max-width:100%;max-height:60vh;border-radius:8px}
+.result-panel .empty{text-align:center;color:var(--text3)}
+.result-panel .empty .big{font-size:4rem;display:block;margin-bottom:10px}
+.result-panel .empty p{font-size:.9rem}
 
-        .advanced-toggle {
-            font-size: 0.8rem;
-            color: var(--accent);
-            cursor: pointer;
-            user-select: none;
-            margin-top: 4px;
-            display: inline-block;
-        }
-        .advanced-settings { display: none; margin-top: 8px; }
+.stats{display:flex;gap:10px;flex-wrap:wrap}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 18px;flex:1;min-width:90px;box-shadow:var(--shadow)}
+.stat-card .num{font-size:1.4rem;font-weight:700;font-family:monospace}
+.stat-card .lbl{font-size:.7rem;color:var(--text3);text-transform:uppercase;margin-top:2px}
 
-        /* Buttons */
-        .btn {
-            width: 100%;
-            padding: 10px 20px;
-            border: none;
-            border-radius: var(--radius-sm);
-            font-size: 0.9rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        .btn-primary {
-            background: var(--green);
-            color: #000;
-            font-size: 1rem;
-            padding: 14px;
-        }
-        .btn-primary:hover { background: #46c756; transform: translateY(-1px); }
-        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-        .btn-secondary {
-            background: #21262d;
-            color: var(--text);
-            border: 1px solid var(--border);
-        }
-        .btn-secondary:hover { background: #30363d; }
-        .btn-accent {
-            background: #1f6feb;
-            color: #fff;
-        }
-        .btn-accent:hover { background: #388bfd; }
+.result-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;display:none;box-shadow:var(--shadow)}
+.result-card h3{font-size:.85rem;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.badge{display:inline-block;padding:4px 14px;border-radius:20px;font-size:.75rem;font-weight:700}
 
-        .btn-row { display: flex; gap: 8px; }
-        .btn-row .btn { flex: 1; }
+table{width:100%;border-collapse:collapse;font-size:.78rem}
+th{text-align:right;padding:8px 10px;color:var(--text3);font-weight:600;border-bottom:1px solid var(--border);font-size:.7rem;text-transform:uppercase}
+td{padding:6px 10px;border-bottom:1px solid #1a2a3a}tbody tr:hover{background:rgba(59,130,246,.04)}
 
-        /* ── Main Content ── */
-        .main-content {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        .result-area {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            min-height: 400px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
-        }
-        .result-area .empty-state {
-            text-align: center;
-            color: var(--text-dim);
-        }
-        .result-area .empty-state .icon { font-size: 4rem; display: block; margin-bottom: 12px; }
-        .result-area img {
-            max-width: 100%;
-            max-height: 70vh;
-            border-radius: 8px;
-        }
+.spinner{display:none;width:44px;height:44px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;position:absolute}
+@keyframes spin{to{transform:rotate(360deg)}}
 
-        /* Stats bar */
-        .stats-bar {
-            display: flex;
-            gap: 16px;
-            flex-wrap: wrap;
-        }
-        .stat {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            padding: 12px 18px;
-            flex: 1;
-            min-width: 100px;
-        }
-        .stat .num {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--accent);
-            font-family: 'JetBrains Mono', monospace;
-        }
-        .stat .label { font-size: 0.75rem; color: var(--text-dim); }
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 28px;border-radius:24px;font-size:.82rem;font-weight:600;z-index:9999;opacity:0;transition:.3s;pointer-events:none;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.toast.show{opacity:1}.toast-ok{background:var(--green);color:#000}.toast-err{background:var(--red);color:#fff}.toast-info{background:var(--accent);color:#fff}
 
-        /* Matches table */
-        .matches-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.8rem;
-            font-family: 'JetBrains Mono', monospace;
-        }
-        .matches-table th {
-            text-align: right;
-            padding: 8px 12px;
-            color: var(--text-dim);
-            font-weight: 600;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.7rem;
-            text-transform: uppercase;
-        }
-        .matches-table td {
-            padding: 6px 12px;
-            border-bottom: 1px solid #21262d;
-        }
-        .matches-table .conf-high { color: var(--green); font-weight: 700; }
-        .matches-table .conf-med { color: var(--orange); }
-        .matches-table .conf-low { color: var(--text-dim); }
-        .matches-table tbody tr:hover { background: #1c2333; }
+.vault-select{width:100%;margin-top:6px;font-size:.78rem}
+.vault-actions{display:flex;gap:6px;margin-top:6px}
 
-        /* Loading spinner */
-        .spinner {
-            display: none;
-            width: 40px; height: 40px;
-            border: 3px solid var(--border);
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* Toast */
-        .toast {
-            position: fixed;
-            bottom: 24px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--red);
-            color: #fff;
-            padding: 10px 24px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            z-index: 999;
-            opacity: 0;
-            transition: opacity 0.3s;
-            pointer-events: none;
-        }
-        .toast.show { opacity: 1; }
-
-        /* Responsive */
-        @media (max-width: 900px) {
-            .container { grid-template-columns: 1fr; }
-            .stats-bar { flex-direction: column; }
-        }
-    </style>
+@media(max-width:960px){.container{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
 
 <header>
-    <h1><span class="icon">🔍</span> <span data-lang="ar">مطابقة القوالب</span><span data-lang="en" style="display:none">Template Matching</span></h1>
-    <button class="lang-switch" onclick="toggleLang()" data-lang="ar">🇬🇧 English</button>
+<div class="logo"><span class="shield">🛡️</span>نظام كشف التزوير الجنائي</div>
+<div class="actions"><button class="lang-btn" onclick="toggleLang()" id="langBtn">🇬🇧 English</button></div>
 </header>
 
 <div class="container">
-    <!-- ═══════════ SIDEBAR ═══════════ -->
-    <div class="sidebar">
-        <!-- Source image -->
-        <div class="card">
-            <h3 data-lang="ar">📷 الصورة المصدرية</h3>
-            <div class="upload-zone" id="sourceZone" onclick="document.getElementById('sourceInput').click()">
-                <div class="placeholder" id="sourcePlaceholder">
-                    <span class="icon">🖼️</span>
-                    <span data-lang="ar">اسحب الصورة هنا أو اضغط للتحميل</span>
-                </div>
-                <input type="file" id="sourceInput" accept="image/*" onchange="uploadImage('source', this)">
-            </div>
-        </div>
 
-        <!-- Template image -->
-        <div class="card">
-            <h3 data-lang="ar">🎯 صورة القالب</h3>
-            <div class="upload-zone" id="templateZone" onclick="document.getElementById('templateInput').click()">
-                <div class="placeholder" id="templatePlaceholder">
-                    <span class="icon">🎯</span>
-                    <span data-lang="ar">اسحب صورة القالب هنا أو اضغط للتحميل</span>
-                </div>
-                <input type="file" id="templateInput" accept="image/*" onchange="uploadImage('template', this)">
-            </div>
-            <button class="btn btn-secondary" style="margin-top:8px" onclick="enableCropMode()" id="cropBtn" disabled data-lang="ar">
-                ✂️ قص القالب من الصورة المصدرية
-            </button>
-        </div>
+<div class="sidebar">
+  <div class="card">
+    <h3><span class="dot dot-blue"></span>📷 الصورة المصدرية (الأصلية)</h3>
+    <div class="upload-box" id="srcBox" onclick="document.getElementById('srcInput').click()">
+      <div class="placeholder" id="srcPH"><span class="big">🖼️</span>اسحب الصورة هنا أو اضغط</div>
+      <input type="file" id="srcInput" accept="image/*" onchange="upload('source',this)">
+    </div>
+  </div>
 
-        <!-- Match controls -->
-        <div class="card">
-            <h3 data-lang="ar">⚙️ إعدادات المطابقة</h3>
+  <div class="card">
+    <h3><span class="dot dot-red"></span>🎯 صورة القالب (المشتبه بها)</h3>
+    <div class="upload-box" id="tplBox" onclick="document.getElementById('tplInput').click()">
+      <div class="placeholder" id="tplPH"><span class="big">🎯</span>اسحب صورة القالب هنا أو اضغط</div>
+      <input type="file" id="tplInput" accept="image/*" onchange="upload('template',this)">
+    </div>
+    <button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="cropTemplate()" id="cropBtn" disabled>✂️ قص القالب من المصدر</button>
+  </div>
 
-            <div class="control-group">
-                <label><span data-lang="ar">طريقة المطابقة</span></label>
-                <select id="methodSelect">
-                    <option value="TM_CCOEFF">Correlation Coefficient</option>
-                    <option value="TM_CCOEFF_NORMED" selected>Correlation Coefficient (Normalized) ⭐</option>
-                    <option value="TM_CCORR">Cross-Correlation</option>
-                    <option value="TM_CCORR_NORMED">Cross-Correlation (Normalized)</option>
-                    <option value="TM_SQDIFF">Squared Difference</option>
-                    <option value="TM_SQDIFF_NORMED">Squared Difference (Normalized)</option>
-                </select>
-            </div>
-
-            <div class="control-group">
-                <label><span data-lang="ar">العتبة</span> <span class="val" id="thresholdVal">0.80</span></label>
-                <input type="range" id="thresholdSlider" min="0.10" max="0.99" step="0.01" value="0.80" oninput="document.getElementById('thresholdVal').textContent=this.value">
-            </div>
-
-            <div class="control-group">
-                <label style="justify-content:flex-start;gap:8px;align-items:center;cursor:pointer">
-                    <input type="checkbox" id="multiScaleCheck">
-                    <span data-lang="ar">مطابقة متعددة المقاييس</span>
-                </label>
-            </div>
-
-            <span class="advanced-toggle" onclick="toggleAdvanced()" data-lang="ar">⚙️ إعدادات متقدمة ▾</span>
-            <div class="advanced-settings" id="advancedSettings">
-                <div class="control-group">
-                    <label><span data-lang="ar">الحد الأدنى للمقياس</span> <span class="val" id="scaleMinVal">0.3</span></label>
-                    <input type="range" id="scaleMin" min="0.1" max="2.0" step="0.1" value="0.3" oninput="document.getElementById('scaleMinVal').textContent=this.value">
-                </div>
-                <div class="control-group">
-                    <label><span data-lang="ar">الحد الأقصى للمقياس</span> <span class="val" id="scaleMaxVal">2.5</span></label>
-                    <input type="range" id="scaleMax" min="0.5" max="5.0" step="0.1" value="2.5" oninput="document.getElementById('scaleMaxVal').textContent=this.value">
-                </div>
-                <div class="control-group">
-                    <label><span data-lang="ar">خطوات القياس</span> <span class="val" id="scaleStepsVal">25</span></label>
-                    <input type="range" id="scaleSteps" min="5" max="60" step="1" value="25" oninput="document.getElementById('scaleStepsVal').textContent=this.value">
-                </div>
-                <div class="control-group">
-                    <label><span data-lang="ar">عتبة NMS</span> <span class="val" id="nmsThreshVal">0.3</span></label>
-                    <input type="range" id="nmsThresh" min="0.05" max="0.8" step="0.05" value="0.3" oninput="document.getElementById('nmsThreshVal').textContent=this.value">
-                </div>
-            </div>
-
-            <div class="btn-row" style="margin-top: 14px">
-                <button class="btn btn-primary" id="matchBtn" onclick="runMatch()" disabled data-lang="ar">
-                    🔍 تشغيل المطابقة
-                </button>
-            </div>
-            <div class="btn-row" style="margin-top: 6px">
-                <button class="btn btn-accent" id="compareBtn" onclick="runCompare()" disabled data-lang="ar">
-                    📊 مقارنة جميع الطرق
-                </button>
-                <button class="btn btn-secondary" id="downloadBtn" onclick="downloadResult()" disabled data-lang="ar">
-                    💾 تحميل النتيجة
-                </button>
-            </div>
-            <div class="btn-row" style="margin-top: 6px">
-                <button class="btn btn-primary" id="forgeryBtn" onclick="runForgeryAnalysis()" disabled
-                        style="background: #d2991d; font-size: 0.9rem;" data-lang="ar">
-                    🔬 كشف التزوير وتحليل الاختلافات
-                </button>
-            </div>
-            <div class="btn-row" style="margin-top: 4px">
-                <button class="btn btn-primary" id="forensicsBtn" onclick="runDocumentForensics()" disabled
-                        style="background: #c0392b; font-size: 0.9rem;" data-lang="ar">
-                    🔴 فحص المستندات الجنائي (5 طرق)
-                </button>
-            </div>
-            <div class="btn-row" style="margin-top: 4px">
-                <button class="btn btn-secondary" id="signatureBtn" onclick="runSignatureVerify()" disabled
-                        style="font-size: 0.8rem;" data-lang="ar">
-                    ✍️ التحقق من التوقيع
-                </button>
-                <button class="btn btn-secondary" id="vaultRegBtn" onclick="registerInVault()" disabled
-                        style="font-size: 0.8rem;" data-lang="ar">
-                    🗄️ تسجيل البصمة
-                </button>
-                <button class="btn btn-secondary" id="reportBtn" onclick="generateFullReport()" disabled
-                        style="font-size: 0.8rem;" data-lang="ar">
-                    📄 تقرير احترافي
-                </button>
-            </div>
-        </div>
+  <div class="card">
+    <div class="tab-nav" id="tabNav">
+      <button class="tab-btn active" data-tab="match">🔍 مطابقة</button>
+      <button class="tab-btn" data-tab="forensics">🔬 جنائي 5 طرق</button>
+      <button class="tab-btn" data-tab="signature">✍️ توقيع</button>
+      <button class="tab-btn" data-tab="vault">🗄️ البصمات</button>
+      <button class="tab-btn" data-tab="report">📄 تقرير</button>
     </div>
 
-    <!-- ═══════════ MAIN CONTENT ═══════════ -->
-    <div class="main-content">
-        <!-- Stats -->
-        <div class="stats-bar" id="statsBar" style="display:none">
-            <div class="stat"><div class="num" id="statMatches">-</div><div class="label" data-lang="ar">التطابقات</div></div>
-            <div class="stat"><div class="num" id="statTime">-</div><div class="label" data-lang="ar">الزمن (مللي ثانية)</div></div>
-            <div class="stat"><div class="num" id="statMethod">-</div><div class="label" data-lang="ar">الطريقة</div></div>
-            <div class="stat"><div class="num" id="statThreshold">-</div><div class="label" data-lang="ar">العتبة</div></div>
-        </div>
-
-        <!-- Result image -->
-        <div class="result-area" id="resultArea">
-            <div class="empty-state" id="emptyState">
-                <span class="icon">🖼️</span>
-                <p data-lang="ar">قم بتحميل الصور واضغط "تشغيل المطابقة" لعرض النتائج هنا</p>
-            </div>
-            <img id="resultImage" style="display:none" alt="Result">
-            <div class="spinner" id="spinner"></div>
-        </div>
-
-        <!-- Matches table -->
-        <div class="card" id="matchesCard" style="display:none">
-            <h3 data-lang="ar">📋 قائمة التطابقات</h3>
-            <div style="max-height:200px;overflow:auto">
-                <table class="matches-table">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>X</th>
-                            <th>Y</th>
-                            <th data-lang="ar">العرض</th>
-                            <th data-lang="ar">الارتفاع</th>
-                            <th data-lang="ar">الثقة</th>
-                            <th data-lang="ar">المقياس</th>
-                        </tr>
-                    </thead>
-                    <tbody id="matchesBody"></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Comparison result -->
-        <div class="result-area" id="comparisonArea" style="display:none; min-height:200px">
-            <img id="comparisonImage" style="max-width:100%">
-        </div>
-
-        <!-- Forgery Analysis Result -->
-        <div class="card" id="forgeryCard" style="display:none">
-            <h3>
-                🔬 <span data-lang="ar">نتائج كشف التزوير</span>
-                <span data-lang="en" style="display:none">Forgery Detection Results</span>
-                <span id="forgeryRiskBadge" style="
-                    display:inline-block; margin-right:12px; padding:4px 14px;
-                    border-radius:20px; font-size:0.8rem; font-weight:700;
-                "></span>
-            </h3>
-            <div class="stats-bar" style="margin-bottom:12px">
-                <div class="stat">
-                    <div class="num" id="fgSsim">-</div>
-                    <div class="label">SSIM</div>
-                </div>
-                <div class="stat">
-                    <div class="num" id="fgEla">-</div>
-                    <div class="label">ELA Score</div>
-                </div>
-                <div class="stat">
-                    <div class="num" id="fgNoise">-</div>
-                    <div class="label" data-lang="ar">اتساق الضوضاء</div>
-                </div>
-                <div class="stat">
-                    <div class="num" id="fgDiffRegions">-</div>
-                    <div class="label" data-lang="ar">مناطق الاختلاف</div>
-                </div>
-                <div class="stat">
-                    <div class="num" id="fgValidation">-</div>
-                    <div class="label" data-lang="ar">التحقق</div>
-                </div>
-            </div>
-            <div id="forgeryDetails" style="font-size:0.8rem; color:var(--text-dim); margin-bottom:12px"></div>
-            <div class="result-area" style="min-height:200px">
-                <img id="forgeryAnalysisImage" style="max-width:100%">
-            </div>
-        </div>
-
-        <!-- Document Forensics Result -->
-        <div class="card" id="forensicsCard" style="display:none">
-            <h3>
-                🔴 <span data-lang="ar">الفحص الجنائي للمستندات (5 طرق)</span>
-                <span data-lang="en" style="display:none">Document Forensics (5 Methods)</span>
-                <span id="forensicsSeverityBadge" style="
-                    display:inline-block; margin-right:12px; padding:4px 14px;
-                    border-radius:20px; font-size:0.8rem; font-weight:700;
-                "></span>
-            </h3>
-
-            <!-- Stats -->
-            <div class="stats-bar" style="margin-bottom:12px">
-                <div class="stat">
-                    <div class="num" id="dfScore">-</div>
-                    <div class="label" data-lang="ar">درجة التزوير</div>
-                </div>
-                <div class="stat">
-                    <div class="num" id="dfPercentage">-</div>
-                    <div class="label" data-lang="ar">نسبة المساحة</div>
-                </div>
-                <div class="stat">
-                    <div class="num" id="dfRegions">-</div>
-                    <div class="label" data-lang="ar">المناطق المشبوهة</div>
-                </div>
-                <div class="stat">
-                    <div class="num" id="dfTime">-</div>
-                    <div class="label" data-lang="ar">الزمن (ms)</div>
-                </div>
-                <div class="stat">
-                    <div class="num" id="dfVerdict">-</div>
-                    <div class="label" data-lang="ar">الحكم</div>
-                </div>
-            </div>
-
-            <!-- Method scores -->
-            <div style="margin-bottom:12px">
-                <h4 style="font-size:0.8rem; color:var(--text-dim); margin-bottom:6px" data-lang="ar">نتائج الطرق الخمس:</h4>
-                <div class="stats-bar" id="dfMethods" style="flex-wrap:wrap"></div>
-            </div>
-
-            <!-- Regions table -->
-            <div id="dfRegionsTable" style="display:none; margin-bottom:12px">
-                <h4 style="font-size:0.8rem; color:var(--red); margin-bottom:6px" data-lang="ar">🔴 المناطق المكتشفة:</h4>
-                <div style="max-height:200px;overflow:auto">
-                    <table class="matches-table">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>X</th>
-                                <th>Y</th>
-                                <th>W</th>
-                                <th>H</th>
-                                <th>Conf</th>
-                                <th data-lang="ar">النوع</th>
-                            </tr>
-                        </thead>
-                        <tbody id="dfRegionsBody"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Annotated image -->
-            <div class="result-area" style="min-height:200px">
-                <img id="forensicsImage" style="max-width:100%">
-            </div>
-
-            <!-- Canvas (6-panel) -->
-            <div id="dfCanvasWrapper" style="display:none; margin-top:12px">
-                <h4 style="font-size:0.8rem; color:var(--text-dim); margin-bottom:6px" data-lang="ar">📊 لوحة الأدلة الجنائية:</h4>
-                <div class="result-area" style="min-height:200px">
-                    <img id="forensicsCanvas" style="max-width:100%">
-                </div>
-            </div>
-
-            <!-- Summary -->
-            <div id="dfSummary" style="font-size:0.78rem; color:var(--text-dim); margin-top:12px;
-                background:#111; padding:12px; border-radius:8px; font-family:monospace;
-                max-height:250px; overflow:auto; white-space:pre-wrap"></div>
-        </div>
+    <div class="tab-content" id="tab-match">
+      <div class="ctrl"><label>طريقة المطابقة</label>
+        <select id="method"><option value="TM_CCOEFF_NORMED" selected>⭐ Correlation Coefficient (Normalized)</option>
+        <option value="TM_CCOEFF">Correlation Coefficient</option><option value="TM_CCORR_NORMED">Cross-Correlation (Normalized)</option>
+        <option value="TM_CCORR">Cross-Correlation</option><option value="TM_SQDIFF_NORMED">Squared Difference (Normalized)</option>
+        <option value="TM_SQDIFF">Squared Difference</option></select></div>
+      <div class="ctrl"><label>العتبة <span class="val" id="thVal">0.80</span></label>
+        <input type="range" id="threshold" min="0.10" max="0.99" step="0.01" value="0.80" oninput="document.getElementById('thVal').textContent=this.value"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--text2);cursor:pointer;margin-bottom:8px"><input type="checkbox" id="multiScale">مطابقة متعددة المقاييس</label>
+      <button class="btn btn-green" id="matchBtn" onclick="runMatch()" disabled>🔍 تشغيل المطابقة والتحقق</button>
+      <div class="btn-row"><button class="btn btn-ghost btn-sm" id="compareBtn" onclick="runCompare()" disabled>📊 مقارنة الطرق</button>
+      <button class="btn btn-ghost btn-sm" id="downloadBtn" onclick="downloadResult()" disabled>💾 تحميل</button></div>
     </div>
+
+    <div class="tab-content" id="tab-forensics" style="display:none">
+      <p style="font-size:.78rem;color:var(--text3);margin-bottom:8px">مقارنة المصدر مع المشتبه بـ 5 طرق: فرق البكسل، عرض الخط، تناسق الحبر، تباعد الأحرف، النسيج</p>
+      <button class="btn btn-red" id="forensicsBtn" onclick="runForensics()" disabled>🔴 تشغيل الفحص الجنائي</button>
+    </div>
+
+    <div class="tab-content" id="tab-signature" style="display:none">
+      <p style="font-size:.78rem;color:var(--text3);margin-bottom:8px">قارن توقيعين: الأصلي (المصدر) مقابل المشتبه (القالب)</p>
+      <button class="btn btn-purple" id="sigBtn" onclick="runSignature()" disabled>✍️ التحقق من التوقيع</button>
+    </div>
+
+    <div class="tab-content" id="tab-vault" style="display:none">
+      <p style="font-size:.78rem;color:var(--text3);margin-bottom:8px">تسجيل بصمات المستندات ومقارنتها بدون إعادة رفع الأصل</p>
+      <button class="btn btn-orange btn-sm" onclick="vaultList()" style="margin-bottom:6px">📋 تحميل قائمة البصمات</button>
+      <select class="vault-select" id="vaultSelect" style="display:none" onchange="onVaultSelect()"><option value="">-- اختر بصمة للمقارنة --</option></select>
+      <div class="vault-actions" id="vaultActions" style="display:none">
+        <button class="btn btn-green btn-sm" onclick="vaultCompare()">🔍 مقارنة مع المصدر</button>
+        <button class="btn btn-red btn-sm" onclick="vaultDelete()">🗑️ حذف</button></div>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-blue btn-sm" id="vaultRegBtn" onclick="vaultRegister()" disabled>🗄️ تسجيل بصمة المصدر</button>
+        <button class="btn btn-ghost btn-sm" onclick="vaultSearch()" id="vaultSearchBtn" disabled>🔍 بحث سريع</button></div>
+      <div id="vaultResult" style="font-size:.75rem;margin-top:6px;color:var(--text2)"></div>
+    </div>
+
+    <div class="tab-content" id="tab-report" style="display:none">
+      <p style="font-size:.78rem;color:var(--text3);margin-bottom:8px">تقرير جنائي احترافي كامل مع مخططات وبيانات</p>
+      <button class="btn btn-blue" id="reportBtn" onclick="genReport()" disabled>📄 إنشاء تقرير احترافي</button>
+      <div class="btn-row" style="margin-top:6px"><button class="btn btn-ghost btn-sm" onclick="runMetadata()" id="metaBtn" disabled>📋 تحليل Metadata</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="stats" id="statsBar" style="display:none">
+    <div class="stat-card"><div class="num" id="st1" style="color:var(--accent2)">-</div><div class="lbl">النتيجة</div></div>
+    <div class="stat-card"><div class="num" id="st2" style="color:var(--green2)">-</div><div class="lbl">الدرجة</div></div>
+    <div class="stat-card"><div class="num" id="st3" style="color:var(--purple)">-</div><div class="lbl">المناطق</div></div>
+    <div class="stat-card"><div class="num" id="st4" style="color:var(--text2)">-</div><div class="lbl">الزمن</div></div>
+  </div>
+
+  <div class="result-panel" id="resultPanel">
+    <div class="empty" id="emptyState"><span class="big">🛡️</span><p>قم بتحميل الصور واختيار السيناريو المناسب</p></div>
+    <img id="resultImg" style="display:none" alt="Result">
+    <div class="spinner" id="spinner"></div>
+  </div>
+
+  <div class="result-card glow-blue" id="matchCard">
+    <h3>🔍 نتيجة المطابقة</h3>
+    <div style="max-height:180px;overflow:auto"><table><thead><tr><th>#</th><th>X</th><th>Y</th><th>W</th><th>H</th><th>الثقة</th><th>المقياس</th></tr></thead><tbody id="matchBody"></tbody></table></div>
+    <div id="validationInfo" style="font-size:.78rem;margin-top:8px;color:var(--text2)"></div>
+  </div>
+
+  <div class="result-card glow-red" id="forensicsCard">
+    <h3>🔬 الفحص الجنائي (5 طرق) <span class="badge" id="fgBadge"></span></h3>
+    <div class="stats" style="margin-bottom:10px">
+      <div class="stat-card"><div class="num" id="fgScore" style="color:var(--red2)">-</div><div class="lbl">درجة التزوير</div></div>
+      <div class="stat-card"><div class="num" id="fgPct" style="color:var(--orange)">-</div><div class="lbl">% المساحة</div></div>
+      <div class="stat-card"><div class="num" id="fgRegions" style="color:var(--accent2)">-</div><div class="lbl">مناطق</div></div>
+      <div class="stat-card"><div class="num" id="fgVerdict" style="font-size:1rem">-</div><div class="lbl">الحكم</div></div></div>
+    <div id="fgMethods" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
+    <div id="fgDetails" style="font-size:.75rem;color:var(--text3)"></div>
+  </div>
+
+  <div class="result-card glow-purple" id="sigCard">
+    <h3>✍️ نتيجة التحقق من التوقيع <span class="badge" id="sigBadge"></span></h3>
+    <div class="stats" style="margin-bottom:8px">
+      <div class="stat-card"><div class="num" id="sigConf" style="color:var(--purple)">-</div><div class="lbl">الثقة</div></div>
+      <div class="stat-card"><div class="num" id="sigGeo" style="color:var(--accent2)">-</div><div class="lbl">الهندسة</div></div>
+      <div class="stat-card"><div class="num" id="sigDen" style="color:var(--green2)">-</div><div class="lbl">الكثافة</div></div>
+      <div class="stat-card"><div class="num" id="sigTopo" style="color:var(--orange)">-</div><div class="lbl">الطوبولوجيا</div></div>
+      <div class="stat-card"><div class="num" id="sigOrb" style="color:var(--red2)">-</div><div class="lbl">ORB</div></div></div>
+  </div>
+
+  <div class="result-card" id="metaCard">
+    <h3>📋 تحليل البيانات الوصفية (Metadata)</h3>
+    <div id="metaContent" style="font-size:.78rem;color:var(--text2)"></div>
+  </div>
+</div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
-    // ═══════════════════════════════════════════
-    // State
-    // ═══════════════════════════════════════════
-    let hasSource = false;
-    let hasTemplate = false;
-    let cropMode = false;
-    let lang = 'ar';
-    let lastResultData = null;
-
-    // ═══════════════════════════════════════════
-    // Language
-    // ═══════════════════════════════════════════
-    function toggleLang() {
-        lang = lang === 'ar' ? 'en' : 'ar';
-        document.querySelectorAll('[data-lang]').forEach(el => {
-            el.style.display = el.dataset.lang === lang ? '' : 'none';
-        });
-        const btn = document.querySelector('.lang-switch');
-        btn.textContent = lang === 'ar' ? '🇬🇧 English' : '🇸🇦 العربية';
-        document.dir = lang === 'ar' ? 'rtl' : 'ltr';
-    }
-
-    // ═══════════════════════════════════════════
-    // Upload
-    // ═══════════════════════════════════════════
-    async function uploadImage(type, input) {
-        const file = input.files[0];
-        if (!file) return;
-
-        const formData = new FormData();
-        formData.append('image', file);
-
-        try {
-            const endpoint = type === 'source' ? '/api/upload-source' : '/api/upload-template';
-            const res = await fetch(endpoint, { method: 'POST', body: formData });
-            const data = await res.json();
-            if (!data.ok) throw new Error(data.error);
-
-            const zone = document.getElementById(type === 'source' ? 'sourceZone' : 'templateZone');
-            const placeholder = document.getElementById(type === 'source' ? 'sourcePlaceholder' : 'templatePlaceholder');
-
-            zone.classList.add('has-image');
-            placeholder.innerHTML = `<img src="${data.preview}" alt="${type}">`;
-
-            if (type === 'source') { hasSource = true; document.getElementById('cropBtn').disabled = false; }
-            else hasTemplate = true;
-
-            updateButtons();
-        } catch (e) {
-            showToast(e.message);
-        }
-    }
-
-    // ═══════════════════════════════════════════
-    // Drag & Drop
-    // ═══════════════════════════════════════════
-    ['sourceZone', 'templateZone'].forEach(id => {
-        const zone = document.getElementById(id);
-        zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-        zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-        zone.addEventListener('drop', e => {
-            e.preventDefault();
-            zone.classList.remove('drag-over');
-            const file = e.dataTransfer.files[0];
-            if (!file) return;
-            const type = id === 'sourceZone' ? 'source' : 'template';
-            const input = document.getElementById(type + 'Input');
-            const dt = new DataTransfer();
-            dt.items.add(file);
-            input.files = dt.files;
-            uploadImage(type, input);
-        });
-    });
-
-    // ═══════════════════════════════════════════
-    // Crop mode
-    // ═══════════════════════════════════════════
-    function enableCropMode() {
-        if (!hasSource) return;
-        const zone = document.getElementById('sourceZone');
-        const img = zone.querySelector('img');
-        if (!img) return;
-
-        cropMode = !cropMode;
-        const btn = document.getElementById('cropBtn');
-        btn.style.background = cropMode ? 'var(--green)' : '';
-        btn.textContent = cropMode ? '✅ ' + (lang==='ar'?'حدد المنطقة في الصورة أعلاه':'Select region above') : '✂️ ' + (lang==='ar'?'قص القالب من الصورة المصدرية':'Crop Template from Source');
-
-        if (!cropMode) {
-            const overlay = document.getElementById('cropOverlay');
-            if (overlay) overlay.style.display = 'none';
-            return;
-        }
-
-        // Create overlay if needed
-        let overlay = document.getElementById('cropOverlay');
-        if (!overlay) {
-            overlay = document.createElement('div');
-            overlay.className = 'crop-overlay';
-            overlay.id = 'cropOverlay';
-            img.parentElement.appendChild(overlay);
-        }
-
-        let startX, startY;
-        const wrapper = img.parentElement;
-
-        wrapper.onmousedown = e => {
-            if (!cropMode) return;
-            const rect = img.getBoundingClientRect();
-            startX = e.clientX - rect.left;
-            startY = e.clientY - rect.top;
-            overlay.style.display = 'block';
-            overlay.style.left = startX + 'px';
-            overlay.style.top = startY + 'px';
-            overlay.style.width = '0px';
-            overlay.style.height = '0px';
-        };
-
-        wrapper.onmousemove = e => {
-            if (!cropMode || !startX) return;
-            const rect = img.getBoundingClientRect();
-            const curX = e.clientX - rect.left;
-            const curY = e.clientY - rect.top;
-            const x = Math.min(startX, curX);
-            const y = Math.min(startY, curY);
-            const w = Math.abs(curX - startX);
-            const h = Math.abs(curY - startY);
-            overlay.style.left = x + 'px';
-            overlay.style.top = y + 'px';
-            overlay.style.width = w + 'px';
-            overlay.style.height = h + 'px';
-        };
-
-        wrapper.onmouseup = async e => {
-            if (!cropMode || !startX) return;
-            const rect = img.getBoundingClientRect();
-            const curX = e.clientX - rect.left;
-            const curY = e.clientY - rect.top;
-            const x = Math.round(Math.min(startX, curX));
-            const y = Math.round(Math.min(startY, curY));
-            const w = Math.round(Math.abs(curX - startX));
-            const h = Math.round(Math.abs(curY - startY));
-
-            startX = null;
-            if (w < 5 || h < 5) return;
-
-            // Scale back to original image coordinates
-            const naturalW = parseInt(img.naturalWidth || img.width);
-            const naturalH = parseInt(img.naturalHeight || img.height);
-            const displayW = rect.width;
-            const displayH = rect.height;
-            const scaleX = naturalW / displayW;
-            const scaleY = naturalH / displayH;
-
-            const cx = Math.round(x * scaleX);
-            const cy = Math.round(y * scaleY);
-            const cw = Math.round(w * scaleX);
-            const ch = Math.round(h * scaleY);
-
-            try {
-                const res = await fetch('/api/crop-template', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ x: cx, y: cy, w: cw, h: ch })
-                });
-                const data = await res.json();
-                if (!data.ok) throw new Error(data.error);
-
-                const tplZone = document.getElementById('templateZone');
-                const tplPlaceholder = document.getElementById('templatePlaceholder');
-                tplZone.classList.add('has-image');
-                tplPlaceholder.innerHTML = `<img src="${data.preview}" alt="template">`;
-                hasTemplate = true;
-                updateButtons();
-
-                // Exit crop mode
-                cropMode = false;
-                document.getElementById('cropBtn').style.background = '';
-                document.getElementById('cropBtn').textContent = '✂️ ' + (lang==='ar'?'قص القالب من الصورة المصدرية':'Crop Template from Source');
-                overlay.style.display = 'none';
-            } catch (err) {
-                showToast(err.message);
-            }
-        };
-    }
-
-    // ═══════════════════════════════════════════
-    // Run matching
-    // ═══════════════════════════════════════════
-    async function runMatch() {
-        if (!hasSource || !hasTemplate) return;
-        setLoading(true);
-
-        const payload = {
-            method: document.getElementById('methodSelect').value,
-            threshold: parseFloat(document.getElementById('thresholdSlider').value),
-            multi_scale: document.getElementById('multiScaleCheck').checked,
-            scale_min: parseFloat(document.getElementById('scaleMin').value),
-            scale_max: parseFloat(document.getElementById('scaleMax').value),
-            scale_steps: parseInt(document.getElementById('scaleSteps').value),
-            nms_threshold: parseFloat(document.getElementById('nmsThresh').value),
-            max_matches: 50,
-        };
-
-        try {
-            const res = await fetch('/api/match', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            const data = await res.json();
-            if (!data.ok) throw new Error(data.error);
-
-            lastResultData = data;
-            showResult(data);
-            document.getElementById('downloadBtn').disabled = false;
-        } catch (e) {
-            showToast(e.message);
-        }
-        setLoading(false);
-    }
-
-    async function runCompare() {
-        if (!hasSource || !hasTemplate) return;
-        setLoading(true);
-
-        try {
-            const res = await fetch('/api/compare', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ threshold: parseFloat(document.getElementById('thresholdSlider').value) }),
-            });
-            const data = await res.json();
-            if (!data.ok) throw new Error(data.error);
-
-            document.getElementById('comparisonArea').style.display = 'flex';
-            document.getElementById('comparisonImage').src = data.comparison_preview;
-            document.getElementById('comparisonArea').scrollIntoView({ behavior: 'smooth' });
-        } catch (e) {
-            showToast(e.message);
-        }
-        setLoading(false);
-    }
-
-    // ═══════════════════════════════════════════
-    // Display result
-    // ═══════════════════════════════════════════
-    function showResult(data) {
-        // Stats
-        document.getElementById('statsBar').style.display = 'flex';
-        document.getElementById('statMatches').textContent = data.match_count;
-        document.getElementById('statTime').textContent = data.elapsed_ms;
-        document.getElementById('statMethod').textContent = data.method ? data.method.split('(')[0].trim() : '-';
-        document.getElementById('statThreshold').textContent = data.threshold;
-
-        // Add validation stat if available
-        let statsBar = document.getElementById('statsBar');
-        let validationStat = document.getElementById('statValidation');
-        if (data.validation && !validationStat) {
-            validationStat = document.createElement('div');
-            validationStat.className = 'stat';
-            validationStat.id = 'statValidation';
-            validationStat.innerHTML = '<div class="num" id="statValidationVal">-</div><div class="label">Validation</div>';
-            statsBar.appendChild(validationStat);
-        }
-        if (data.validation) {
-            const valEl = document.getElementById('statValidationVal');
-            if (valEl) {
-                valEl.textContent = data.validation.is_valid ? '\u2713 GENUINE' : '\u26A0 UNVERIFIED';
-                valEl.style.color = data.validation.is_valid ? 'var(--green)' : 'var(--orange)';
-            }
-        }
-
-        // Image
-        document.getElementById('emptyState').style.display = 'none';
-        const resultImg = document.getElementById('resultImage');
-        resultImg.src = data.result_preview;
-        resultImg.style.display = 'block';
-
-        // Matches table
-        const card = document.getElementById('matchesCard');
-        const tbody = document.getElementById('matchesBody');
-        tbody.innerHTML = '';
-
-        if (data.matches && data.matches.length > 0) {
-            card.style.display = 'block';
-            data.matches.forEach(m => {
-                let confClass = m.confidence >= 0.9 ? 'conf-high' : m.confidence >= 0.6 ? 'conf-med' : 'conf-low';
-                tbody.innerHTML += `<tr>
-                    <td>${m.id}</td><td>${m.x}</td><td>${m.y}</td><td>${m.width}</td><td>${m.height}</td>
-                    <td class="${confClass}">${m.confidence.toFixed(4)}</td><td>${m.scale.toFixed(2)}x</td>
-                </tr>`;
-            });
-        } else {
-            card.style.display = 'none';
-        }
-
-        document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth' });
-    }
-
-    function downloadResult() {
-        window.open('/api/download-result', '_blank');
-    }
-
-    // ═══════════════════════════════════════════
-    // Helpers
-    // ═══════════════════════════════════════════
-    function updateButtons() {
-        const ready = hasSource && hasTemplate;
-        document.getElementById('matchBtn').disabled = !ready;
-        document.getElementById('compareBtn').disabled = !ready;
-        document.getElementById('forgeryBtn').disabled = !ready;
-        document.getElementById('forensicsBtn').disabled = !ready;
-        document.getElementById('signatureBtn').disabled = !ready;
-        document.getElementById('vaultRegBtn').disabled = !hasSource;
-        document.getElementById('reportBtn').disabled = !ready;
-    }
-
-    // ═══════════════════════════════════════════
-    // Signature Verification
-    // ═══════════════════════════════════════════
-    async function runSignatureVerify() {
-        if (!hasSource || !hasTemplate) return;
-        setLoading(true);
-        try {
-            const res = await fetch('/api/signature-verify', { method: 'POST' });
-            const data = await res.json();
-            if (!data.ok) throw new Error(data.error);
-            document.getElementById('emptyState').style.display = 'none';
-            const img = document.getElementById('resultImage');
-            img.src = data.annotated_preview || '';
-            img.style.display = 'block';
-            showToast(`✍️ ${data.verdict_label} (${(data.confidence*100).toFixed(1)}%)`);
-        } catch(e) { showToast(e.message); }
-        setLoading(false);
-    }
-
-    // ═══════════════════════════════════════════
-    // Fingerprint Vault
-    // ═══════════════════════════════════════════
-    async function registerInVault() {
-        if (!hasSource) return;
-        const label = prompt('Document label/name:', 'Document-' + new Date().toISOString().slice(0,10));
-        if (!label) return;
-        try {
-            const res = await fetch('/api/vault-register', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({label}),
-            });
-            const data = await res.json();
-            if (!data.ok) throw new Error(data.error);
-            showToast(`🗄️ Registered: ${data.label} (${data.fingerprint_id.slice(0,8)}...)`);
-        } catch(e) { showToast(e.message); }
-    }
-
-    async function searchVault() {
-        if (!hasSource) return;
-        try {
-            const res = await fetch('/api/vault-search', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({}),
-            });
-            const data = await res.json();
-            if (!data.ok) throw new Error(data.error);
-            const matches = data.results.filter(r => r.is_match);
-            if (matches.length > 0) {
-                showToast(`✅ Found: ${matches[0].label} (${(matches[0].similarity*100).toFixed(1)}%)`);
-            } else {
-                showToast('❌ No match in vault');
-            }
-        } catch(e) { showToast(e.message); }
-    }
-
-    // ═══════════════════════════════════════════
-    // Full Report Generation
-    // ═══════════════════════════════════════════
-    async function generateFullReport() {
-        if (!hasSource || !hasTemplate) return;
-        setLoading(true);
-        try {
-            const res = await fetch('/api/generate-report', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({}),
-            });
-            const data = await res.json();
-            if (!data.ok) throw new Error(data.error);
-
-            // Open report in new window
-            const win = window.open('', '_blank', 'width=900,height=700');
-            win.document.write(data.html_report);
-            win.document.close();
-            showToast('📄 Report opened in new window');
-        } catch(e) { showToast(e.message); }
-        setLoading(false);
-    }
-
-    // ═══════════════════════════════════════════
-    // Forgery Analysis
-    // ═══════════════════════════════════════════
-    async function runForgeryAnalysis() {
-        if (!hasSource || !hasTemplate) return;
-        setLoading(true);
-
-        const payload = {
-            method: document.getElementById('methodSelect').value,
-            threshold: parseFloat(document.getElementById('thresholdSlider').value),
-            multi_scale: document.getElementById('multiScaleCheck').checked,
-        };
-
-        try {
-            const res = await fetch('/api/forgery-analysis', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            const data = await res.json();
-            if (!data.ok) throw new Error(data.error);
-
-            lastResultData = data;
-            showForgeryResult(data);
-            document.getElementById('downloadBtn').disabled = false;
-        } catch (e) {
-            showToast(e.message);
-        }
-        setLoading(false);
-    }
-
-    function showForgeryResult(data) {
-        // Show forgery card
-        const card = document.getElementById('forgeryCard');
-        card.style.display = 'block';
-
-        // Risk badge
-        const badge = document.getElementById('forgeryRiskBadge');
-        badge.textContent = data.forgery_risk_label;
-        const riskColors = {
-            'NONE': '#3fb950',
-            'LOW': '#d2991d',
-            'MEDIUM': '#d2991d',
-            'HIGH': '#f85149',
-            'CRITICAL': '#f85149'
-        };
-        badge.style.background = riskColors[data.forgery_risk] || '#8b949e';
-        badge.style.color = data.forgery_risk === 'LOW' || data.forgery_risk === 'MEDIUM' ? '#000' : '#fff';
-
-        // Stats
-        document.getElementById('fgSsim').textContent = data.ssim_score.toFixed(4);
-        document.getElementById('fgEla').textContent = data.ela_score.toFixed(4);
-        document.getElementById('fgNoise').textContent = data.noise_consistency.toFixed(4);
-        document.getElementById('fgDiffRegions').textContent = data.diff_regions_count;
-        document.getElementById('fgValidation').textContent = data.is_genuine ? '✓ حقيقي' : '⚠ مشبوه';
-        document.getElementById('fgValidation').style.color = data.is_genuine ? 'var(--green)' : 'var(--red)';
-
-        // Show the analysis details
-        const detailsDiv = document.getElementById('forgeryDetails');
-        detailsDiv.innerHTML = data.analysis_details.map(d => {
-            const isWarning = d.startsWith('⚠️') || d.startsWith('⚠');
-            const color = isWarning ? 'var(--orange)' : 'var(--text-dim)';
-            return `<div style="color:${color}; margin: 3px 0">${d}</div>`;
-        }).join('');
-
-        // Validation reasons
-        if (data.validation_reasons && data.validation_reasons.length > 0) {
-            detailsDiv.innerHTML += `<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border)">
-                <strong data-lang="ar">نتيجة التحقق:</strong>
-                ${data.validation_reasons.map(r => `<div style="color:${r.startsWith('✓')?'var(--green)':'var(--orange)'};margin:2px 0">${r}</div>`).join('')}
-            </div>`;
-        }
-
-        // Show analysis image
-        document.getElementById('forgeryAnalysisImage').src = data.analysis_preview;
-
-        // Also show the main result
-        showResult(data);
-
-        card.scrollIntoView({ behavior: 'smooth' });
-    }
-
-    // ═══════════════════════════════════════════
-    // Document Forensics (5 Methods)
-    // ═══════════════════════════════════════════
-    async function runDocumentForensics() {
-        if (!hasSource || !hasTemplate) return;
-        setLoading(true);
-
-        try {
-            const res = await fetch('/api/document-forensics', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    pixel_diff_threshold: 25.0,
-                    min_region_area: 50,
-                    morph_close_kernel: 5,
-                }),
-            });
-            const data = await res.json();
-            if (!data.ok) throw new Error(data.error);
-
-            showForensicsResult(data);
-        } catch (e) {
-            showToast(e.message);
-        }
-        setLoading(false);
-    }
-
-    function showForensicsResult(data) {
-        // Show forensics card
-        const card = document.getElementById('forensicsCard');
-        card.style.display = 'block';
-
-        // Severity badge
-        const badge = document.getElementById('forensicsSeverityBadge');
-        badge.textContent = data.overall_severity_label;
-        const severityColors = {
-            'NONE': '#3fb950',
-            'MINOR': '#d2991d',
-            'SUSPICIOUS': '#d2991d',
-            'SIGNIFICANT': '#f85149',
-            'MAJOR': '#c0392b',
-            'CRITICAL': '#8b0000'
-        };
-        badge.style.background = severityColors[data.overall_severity] || '#8b949e';
-        badge.style.color = '#fff';
-
-        // Stats
-        document.getElementById('dfScore').textContent = (data.tamper_score * 100).toFixed(1) + '%';
-        document.getElementById('dfScore').style.color = data.tamper_score > 0.5 ? 'var(--red)' : 'var(--green)';
-        document.getElementById('dfPercentage').textContent = data.tamper_percentage.toFixed(2) + '%';
-        document.getElementById('dfRegions').textContent = data.region_count;
-        document.getElementById('dfTime').textContent = data.elapsed_ms;
-        document.getElementById('dfVerdict').textContent = data.is_tampered ? '⛔ مزور' : '✅ سليم';
-        document.getElementById('dfVerdict').style.color = data.is_tampered ? 'var(--red)' : 'var(--green)';
-
-        // Method scores
-        const methodsDiv = document.getElementById('dfMethods');
-        methodsDiv.innerHTML = '';
-        const methodNames = {
-            'pixel_subtraction': '1. فرق البكسل',
-            'stroke_width': '2. عرض الخط',
-            'ink_consistency': '3. تناسق الحبر',
-            'spacing_analysis': '4. تباعد الأحرف',
-            'gradient_texture': '5. النسيج والتدرج'
-        };
-        for (const [key, result] of Object.entries(data.method_results || {})) {
-            const conf = result.confidence;
-            const color = conf > 0.5 ? 'var(--red)' : conf > 0.25 ? 'var(--orange)' : 'var(--green)';
-            methodsDiv.innerHTML += `<div class="stat" style="min-width:100px">
-                <div class="num" style="font-size:1rem; color:${color}">${(conf*100).toFixed(1)}%</div>
-                <div class="label" style="font-size:0.6rem">${methodNames[key] || key}</div>
-            </div>`;
-        }
-
-        // Regions table
-        if (data.regions && data.regions.length > 0) {
-            document.getElementById('dfRegionsTable').style.display = 'block';
-            const tbody = document.getElementById('dfRegionsBody');
-            tbody.innerHTML = '';
-            data.regions.forEach(r => {
-                const typeTag = r.likely_addition ? '➕ إضافة' :
-                                r.likely_erasure ? '🧹 مسح' :
-                                r.likely_alteration ? '✏️ تعديل' : 'اختلاف';
-                tbody.innerHTML += `<tr>
-                    <td>${r.id}</td><td>${r.x}</td><td>${r.y}</td>
-                    <td>${r.width}</td><td>${r.height}</td>
-                    <td style="color:${r.tamper_confidence>0.5?'var(--red)':'var(--orange)'}">${(r.tamper_confidence*100).toFixed(1)}%</td>
-                    <td>${typeTag}</td>
-                </tr>`;
-            });
-        } else {
-            document.getElementById('dfRegionsTable').style.display = 'none';
-        }
-
-        // Images
-        document.getElementById('forensicsImage').src = data.annotated_preview;
-        if (data.canvas_preview) {
-            document.getElementById('dfCanvasWrapper').style.display = 'block';
-            document.getElementById('forensicsCanvas').src = data.canvas_preview;
-        }
-
-        // Summary
-        if (data.summary) {
-            document.getElementById('dfSummary').textContent = data.summary.join('\n');
-        }
-
-        card.scrollIntoView({ behavior: 'smooth' });
-    }
-
-    function setLoading(on) {
-        const spinner = document.getElementById('spinner');
-        const resultImg = document.getElementById('resultImage');
-        spinner.style.display = on ? 'block' : 'none';
-        if (on) resultImg.style.display = 'none';
-    }
-
-    function toggleAdvanced() {
-        const el = document.getElementById('advancedSettings');
-        el.style.display = el.style.display === 'block' ? 'none' : 'block';
-    }
-
-    function showToast(msg) {
-        const t = document.getElementById('toast');
-        t.textContent = msg;
-        t.classList.add('show');
-        setTimeout(() => t.classList.remove('show'), 3000);
-    }
-
-    // ═══════════════════════════════════════════
-    // Keyboard shortcut
-    // ═══════════════════════════════════════════
-    document.addEventListener('keydown', e => {
-        if (e.ctrlKey && e.key === 'Enter') runMatch();
-    });
+var S={hasSrc:false,hasTpl:false,currentTab:'match',lang:'ar',cropMode:false};
+
+// Init tabs
+document.querySelectorAll('.tab-btn').forEach(b=>{b.onclick=function(){
+  document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));
+  this.classList.add('active'); S.currentTab=this.dataset.tab;
+  document.querySelectorAll('.tab-content').forEach(c=>c.style.display='none');
+  document.getElementById('tab-'+S.currentTab).style.display='block';
+  hideCards();
+  if(S.currentTab==='vault') vaultList();
+}});
+
+function hideCards(){['matchCard','forensicsCard','sigCard','metaCard'].forEach(id=>document.getElementById(id).style.display='none')}
+
+// Upload
+async function upload(type,input){
+  var f=input.files[0]; if(!f) return;
+  var fd=new FormData(); fd.append('image',f);
+  try{
+    var ep=type==='source'?'/api/upload-source':'/api/upload-template';
+    var r=await fetch(ep,{method:'POST',body:fd}),d=await r.json();
+    if(!d.ok) throw new Error(d.error);
+    var box=document.getElementById(type==='source'?'srcBox':'tplBox');
+    var ph=document.getElementById(type==='source'?'srcPH':'tplPH');
+    box.classList.add('has-img'); ph.innerHTML='<img src="'+d.preview+'" alt="'+type+'">';
+    if(type==='source'){S.hasSrc=true;document.getElementById('cropBtn').disabled=false}
+    else S.hasTpl=true;
+    upd();
+  }catch(e){toast(e.message,'err')}
+}
+
+// Drag & Drop
+['srcBox','tplBox'].forEach(function(id){
+  var el=document.getElementById(id);
+  el.addEventListener('dragover',function(e){e.preventDefault();el.style.borderColor='var(--accent2)'});
+  el.addEventListener('dragleave',function(){el.style.borderColor=''});
+  el.addEventListener('drop',function(e){e.preventDefault();el.style.borderColor='';
+    var f=e.dataTransfer.files[0]; if(!f) return;
+    var type=id==='srcBox'?'source':'template';
+    var inp=document.getElementById(type+'Input');
+    var dt=new DataTransfer(); dt.items.add(f); inp.files=dt.files; upload(type,inp);
+  });
+});
+
+function cropTemplate(){
+  if(!S.hasSrc) return;
+  var img=document.getElementById('srcBox').querySelector('img'); if(!img) return;
+  S.cropMode=!S.cropMode;
+  var btn=document.getElementById('cropBtn');
+  btn.textContent=S.cropMode?'✅ حدد المنطقة في الصورة أعلاه':'✂️ قص القالب من المصدر';
+  btn.style.background=S.cropMode?'var(--green)':'';
+  if(!S.cropMode){var o=document.getElementById('cropOverlay');if(o)o.remove();return}
+  var overlay=document.getElementById('cropOverlay');
+  if(!overlay){overlay=document.createElement('div');overlay.id='cropOverlay';
+    overlay.style.cssText='position:absolute;border:2px dashed var(--green);background:rgba(16,185,129,.12);pointer-events:none;display:none';
+    img.parentElement.appendChild(overlay);}
+  var sx=null,sy=null,wrap=img.parentElement;
+  wrap.onmousedown=function(e){if(!S.cropMode)return;
+    var r=img.getBoundingClientRect();sx=e.clientX-r.left;sy=e.clientY-r.top;
+    overlay.style.display='block';overlay.style.left=sx+'px';overlay.style.top=sy+'px';overlay.style.width='0';overlay.style.height='0';};
+  wrap.onmousemove=function(e){if(!S.cropMode||sx==null)return;
+    var r=img.getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top;
+    var x=Math.min(sx,cx),y=Math.min(sy,cy);
+    overlay.style.left=x+'px';overlay.style.top=y+'px';overlay.style.width=Math.abs(cx-sx)+'px';overlay.style.height=Math.abs(cy-sy)+'px';};
+  wrap.onmouseup=async function(e){if(!S.cropMode||sx==null)return;
+    var r=img.getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top;
+    var x=Math.round(Math.min(sx,cx)),y=Math.round(Math.min(sy,cy));
+    var w=Math.round(Math.abs(cx-sx)),h=Math.round(Math.abs(cy-sy));sx=null;if(w<5||h<5)return;
+    var nw=parseInt(img.naturalWidth||img.width),nh=parseInt(img.naturalHeight||img.height);
+    var scX=nw/r.width,scY=nh/r.height;
+    try{
+      var r2=await fetch('/api/crop-template',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x:Math.round(x*scX),y:Math.round(y*scY),w:Math.round(w*scX),h:Math.round(h*scY)})});
+      var d2=await r2.json();if(!d2.ok)throw new Error(d2.error);
+      var tB=document.getElementById('tplBox'),tP=document.getElementById('tplPH');
+      tB.classList.add('has-img');tP.innerHTML='<img src="'+d2.preview+'" alt="template">';
+      S.hasTpl=true;upd();S.cropMode=false;
+      document.getElementById('cropBtn').style.background='';document.getElementById('cropBtn').textContent='✂️ قص القالب من المصدر';
+      overlay.style.display='none';
+    }catch(e2){toast(e2.message,'err')}
+  };
+}
+
+function upd(){
+  var b=S.hasSrc&&S.hasTpl,s=S.hasSrc;
+  document.getElementById('matchBtn').disabled=!b;
+  document.getElementById('compareBtn').disabled=!b;
+  document.getElementById('forensicsBtn').disabled=!b;
+  document.getElementById('sigBtn').disabled=!b;
+  document.getElementById('reportBtn').disabled=!b;
+  document.getElementById('metaBtn').disabled=!s;
+  document.getElementById('vaultRegBtn').disabled=!s;
+  document.getElementById('vaultSearchBtn').disabled=!s;
+  document.getElementById('downloadBtn').disabled=!b;
+}
+
+// MATCH
+async function runMatch(){
+  if(!S.hasSrc||!S.hasTpl)return;loading(true);
+  try{var r=await fetch('/api/match',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:document.getElementById('method').value,threshold:parseFloat(document.getElementById('threshold').value),multi_scale:document.getElementById('multiScale').checked})});
+    var d=await r.json();if(!d.ok)throw new Error(d.error);
+    showImg(d.result_preview);
+    showStats((d.validation&&d.validation.is_valid?'✅ حقيقي':'⚠ غير موثوق'),d.match_count+' تطابق',d.method?d.method.split('(')[0].trim():'',d.elapsed_ms+' ms');
+    var card=document.getElementById('matchCard');card.style.display='block';
+    var tb=document.getElementById('matchBody');tb.innerHTML='';
+    if(d.matches&&d.matches.length>0){d.matches.forEach(function(m){var c=m.confidence>=.9?'color:var(--green)':m.confidence>=.6?'color:var(--orange)':'';tb.innerHTML+='<tr><td>'+m.id+'</td><td>'+m.x+'</td><td>'+m.y+'</td><td>'+m.width+'</td><td>'+m.height+'</td><td style="'+c+';font-weight:700">'+m.confidence.toFixed(4)+'</td><td>'+m.scale.toFixed(2)+'x</td></tr>'});}
+    else card.style.display='none';
+    var vi=document.getElementById('validationInfo');
+    if(d.validation)vi.innerHTML=d.validation.reasons.map(function(r){return'<div style="color:'+(r.indexOf('✓')===0?'var(--green)':'var(--orange)')+';margin:2px 0">'+r+'</div>'}).join('');
+    else vi.innerHTML='';
+    document.getElementById('downloadBtn').disabled=false;
+  }catch(e){toast(e.message,'err')}loading(false);
+}
+
+async function runCompare(){
+  if(!S.hasSrc||!S.hasTpl)return;loading(true);
+  try{var r=await fetch('/api/compare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({threshold:parseFloat(document.getElementById('threshold').value)})});
+    var d=await r.json();if(!d.ok)throw new Error(d.error);
+    showImg(d.comparison_preview);showStats('📊 مقارنة',(d.methods||[]).length+' طرق','','');
+  }catch(e){toast(e.message,'err')}loading(false);
+}
+
+// FORENSICS
+async function runForensics(){
+  if(!S.hasSrc||!S.hasTpl)return;loading(true);hideCards();
+  try{var r=await fetch('/api/document-forensics',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    var d=await r.json();if(!d.ok)throw new Error(d.error);
+    showImg(d.annotated_preview||d.canvas_preview);
+    showStats(d.overall_severity_label,(d.tamper_score*100).toFixed(1)+'%',d.region_count+' مناطق',d.elapsed_ms+' ms');
+    var card=document.getElementById('forensicsCard');card.style.display='block';
+    var badge=document.getElementById('fgBadge');badge.textContent=d.overall_severity_label;
+    badge.style.background=d.is_tampered?'var(--red)':d.tamper_score>.2?'var(--orange)':'var(--green)';badge.style.color='#fff';
+    document.getElementById('fgScore').textContent=(d.tamper_score*100).toFixed(1)+'%';
+    document.getElementById('fgPct').textContent=d.tamper_percentage+'%';
+    document.getElementById('fgRegions').textContent=d.region_count;
+    document.getElementById('fgVerdict').textContent=d.is_tampered?'⛔ مزور':'✅ سليم';
+    document.getElementById('fgVerdict').style.color=d.is_tampered?'var(--red)':'var(--green)';
+    var md=document.getElementById('fgMethods');md.innerHTML='';
+    var names={'pixel_subtraction':'❶ فرق البكسل','stroke_width':'❷ عرض الخط','ink_consistency':'❸ الحبر','spacing_analysis':'❹ التباعد','gradient_texture':'❺ النسيج'};
+    for(var k in d.method_results||{}){var v=d.method_results[k];
+      md.innerHTML+='<span style="background:var(--surface2);padding:4px 10px;border-radius:6px;font-size:.7rem;color:'+(v.confidence>.5?'var(--red)':v.confidence>.25?'var(--orange)':'var(--green)')+'">'+(names[k]||k)+': '+(v.confidence*100).toFixed(0)+'%</span>';}
+    document.getElementById('fgDetails').innerHTML=(d.summary||[]).slice(4,12).join('<br>');
+  }catch(e){toast(e.message,'err')}loading(false);
+}
+
+// SIGNATURE
+async function runSignature(){
+  if(!S.hasSrc||!S.hasTpl)return;loading(true);hideCards();
+  try{var r=await fetch('/api/signature-verify',{method:'POST'});
+    var d=await r.json();if(!d.ok)throw new Error(d.error);
+    if(d.annotated_preview)showImg(d.annotated_preview);
+    var card=document.getElementById('sigCard');card.style.display='block';
+    var badge=document.getElementById('sigBadge');badge.textContent=d.verdict_label;
+    badge.style.background=d.verdict==='GENUINE'?'var(--green)':d.verdict==='LIKELY_GENUINE'?'#34d399':d.verdict==='INCONCLUSIVE'?'var(--orange)':d.verdict==='SUSPICIOUS'?'var(--red)':'#8b0000';badge.style.color='#fff';
+    document.getElementById('sigConf').textContent=(d.confidence*100).toFixed(1)+'%';
+    document.getElementById('sigGeo').textContent=d.geometry_similarity.toFixed(3);
+    document.getElementById('sigDen').textContent=d.density_similarity.toFixed(3);
+    document.getElementById('sigTopo').textContent=d.topology_similarity.toFixed(3);
+    document.getElementById('sigOrb').textContent=d.orb_match_score.toFixed(3);
+    showStats(d.verdict_label,(d.confidence*100).toFixed(1)+'% ثقة','5 طرق',d.elapsed_ms+' ms');
+  }catch(e){toast(e.message,'err')}loading(false);
+}
+
+// VAULT
+async function vaultList(){
+  try{var r=await fetch('/api/vault-list');var d=await r.json();if(!d.ok)throw new Error(d.error);
+    var sel=document.getElementById('vaultSelect');sel.innerHTML='<option value="">-- اختر بصمة ('+d.count+' مخزنة) --</option>';
+    if(d.fingerprints)d.fingerprints.forEach(function(fp){sel.innerHTML+='<option value="'+fp.id+'">'+fp.label+' ('+fp.size+') — '+(fp.stored_at||'').slice(0,10)+'</option>'});
+    sel.style.display='block';document.getElementById('vaultResult').textContent=d.count+' بصمة في القبو';
+  }catch(e){toast(e.message,'err')}
+}
+
+function onVaultSelect(){document.getElementById('vaultActions').style.display=document.getElementById('vaultSelect').value?'flex':'none'}
+
+async function vaultRegister(){
+  if(!S.hasSrc)return;var label=prompt('اسم المستند:','مستند-'+new Date().toISOString().slice(0,10));if(!label)return;
+  try{var r=await fetch('/api/vault-register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:label})});
+    var d=await r.json();if(!d.ok)throw new Error(d.error);
+    toast('✅ تم التسجيل: '+d.label,'ok');vaultList();
+  }catch(e){toast(e.message,'err')}
+}
+
+async function vaultCompare(){
+  if(!S.hasSrc)return;var id=document.getElementById('vaultSelect').value;if(!id)return;loading(true);
+  try{var r=await fetch('/api/vault-search',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    var d=await r.json();if(!d.ok)throw new Error(d.error);
+    var m=null;for(var i=0;i<d.results.length;i++){if(d.results[i].id===id){m=d.results[i];break}}
+    if(m){document.getElementById('vaultResult').innerHTML='<div style="margin-top:8px;padding:8px;border-radius:8px;background:'+(m.is_match?'rgba(16,185,129,.1)':'rgba(239,68,68,.1)')+'"><strong>'+(m.is_match?'✅ متطابق':'❌ غير متطابق')+'</strong><br>البصمة: '+m.label+'<br>التشابه: '+(m.similarity*100).toFixed(2)+'%<br>مسافة pHash: '+m.phash_distance+'</div>';
+      toast(m.is_match?'✅ متطابق!':'❌ غير متطابق',m.is_match?'ok':'err');}
+  }catch(e){toast(e.message,'err')}loading(false);
+}
+
+async function vaultSearch(){
+  if(!S.hasSrc)return;loading(true);
+  try{var r=await fetch('/api/vault-search',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    var d=await r.json();if(!d.ok)throw new Error(d.error);
+    var matches=d.results.filter(function(x){return x.is_match});
+    document.getElementById('vaultResult').innerHTML=d.results.map(function(x){return'<div style="margin:4px 0;padding:6px;border-radius:6px;background:'+(x.is_match?'rgba(16,185,129,.1)':'rgba(239,68,68,.05)')+';font-size:.75rem">'+(x.is_match?'✅':'❌')+' '+x.label+' — تشابه '+(x.similarity*100).toFixed(1)+'%</div>'}).join('');
+    if(matches.length)toast('✅ وجد '+matches.length+' تطابق','ok');else toast('❌ لا يوجد تطابق','err');
+  }catch(e){toast(e.message,'err')}loading(false);
+}
+
+async function vaultDelete(){
+  var id=document.getElementById('vaultSelect').value;if(!id||!confirm('متأكد من حذف هذه البصمة؟'))return;
+  toast('⚠ استخدم CLI: python main.py vault delete --id '+id.slice(0,8),'info');vaultList();
+}
+
+// REPORT
+async function genReport(){
+  if(!S.hasSrc||!S.hasTpl)return;loading(true);
+  try{var r=await fetch('/api/generate-report',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    var d=await r.json();if(!d.ok)throw new Error(d.error);
+    var w=window.open('','_blank','width=1000,height=750');w.document.write(d.html_report);w.document.close();
+    toast('📄 تم فتح التقرير في نافذة جديدة','ok');
+  }catch(e){toast(e.message,'err')}loading(false);
+}
+
+async function runMetadata(){
+  if(!S.hasSrc)return;loading(true);
+  try{var r=await fetch('/api/metadata',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    var d=await r.json();if(!d.ok)throw new Error(d.error);
+    var card=document.getElementById('metaCard');card.style.display='block';
+    document.getElementById('metaContent').innerHTML=(d.details||[]).join('<br>');
+    showStats(d.is_suspicious?'⚠ مشبوه':'✅ سليم',(d.anomalies||[]).length+' شذوذ',d.camera_make||'N/A','');
+  }catch(e){toast(e.message,'err')}loading(false);
+}
+
+// HELPERS
+function showImg(b64){document.getElementById('emptyState').style.display='none';var img=document.getElementById('resultImg');img.src=b64||'';img.style.display=b64?'block':'none'}
+function showStats(v1,v2,v3,v4){document.getElementById('statsBar').style.display='flex';document.getElementById('st1').textContent=v1;document.getElementById('st2').textContent=v2;document.getElementById('st3').textContent=v3;document.getElementById('st4').textContent=v4}
+function loading(on){document.getElementById('spinner').style.display=on?'block':'none';if(on)document.getElementById('resultImg').style.display='none'}
+function downloadResult(){window.open('/api/download-result','_blank')}
+function toggleLang(){S.lang=S.lang==='ar'?'en':'ar';document.dir=S.lang==='ar'?'rtl':'ltr';document.getElementById('langBtn').textContent=S.lang==='ar'?'🇬🇧 English':'🇸🇦 العربية'}
+function toast(msg,type){var t=document.getElementById('toast');t.textContent=msg;t.className='toast toast-'+(type||'info')+' show';setTimeout(function(){t.classList.remove('show')},3000)}
+document.addEventListener('keydown',function(e){if(e.ctrlKey&&e.key==='Enter'){if(S.currentTab==='match')runMatch();else if(S.currentTab==='forensics')runForensics();else if(S.currentTab==='signature')runSignature()}});
 </script>
 </body>
 </html>
