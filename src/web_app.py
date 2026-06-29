@@ -34,6 +34,9 @@ from .document_fingerprint import FingerprintVault, get_vault
 from .signature_verifier import SignatureVerifier, SignatureReport, SignatureVerdict
 from .metadata_analyzer import MetadataAnalyzer, MetadataReport
 from .forensic_reporter import ForensicReporter
+from .copy_move_detector import CopyMoveDetector, CopyMoveReport
+from .font_analyzer import FontAnalyzer, FontReport
+from .authenticity_scorer import AuthenticityScorer, AuthenticityReport
 
 # ---------------------------------------------------------------------------
 # App factory
@@ -675,6 +678,108 @@ def create_app() -> Flask:
             "tamper_score": round(f_report.tamper_score, 4),
             "severity": f_report.overall_severity.label,
             "region_count": f_report.region_count,
+        })
+
+    @app.route("/api/copy-move", methods=["POST"])
+    def detect_copy_move():
+        """Detect copy-move forgery in the source document."""
+        sid = session.get("session_id")
+        source = _get_image(sid, "source")
+        if source is None:
+            return jsonify({"error": "Upload source image first"}), 400
+        detector = CopyMoveDetector()
+        report = detector.detect(source)
+        heatmap_b64 = ""
+        if report.heatmap is not None:
+            heatmap_vis = cv2.applyColorMap((report.heatmap*255).astype(np.uint8), cv2.COLORMAP_JET)
+            heatmap_b64 = _img_to_b64(heatmap_vis, max_dim=900)
+        return jsonify({
+            "ok": True,
+            "has_clones": report.has_clones,
+            "clone_count": report.clone_count,
+            "confidence": round(report.confidence, 4),
+            "details": report.details,
+            "annotated_preview": _img_to_b64(report.annotated_image, max_dim=900) if report.annotated_image is not None else "",
+            "heatmap_preview": heatmap_b64,
+            "elapsed_ms": round(report.elapsed_ms, 1),
+        })
+
+    @app.route("/api/font-analysis", methods=["POST"])
+    def font_analysis():
+        """Analyze font/text consistency in the source document."""
+        sid = session.get("session_id")
+        source = _get_image(sid, "source")
+        if source is None:
+            return jsonify({"error": "Upload source image first"}), 400
+        analyzer = FontAnalyzer()
+        report = analyzer.analyze(source)
+        regions_json = []
+        for i, r in enumerate(report.inconsistent_regions):
+            regions_json.append({
+                "id": i+1, "x": r.x, "y": r.y, "width": r.width, "height": r.height,
+                "estimated_height": round(r.estimated_height, 1),
+                "estimated_weight": round(r.estimated_weight, 2),
+                "consistency_score": round(r.consistency_score, 4),
+            })
+        return jsonify({
+            "ok": True,
+            "is_consistent": report.is_consistent,
+            "inconsistent_count": len(report.inconsistent_regions),
+            "avg_height": round(report.avg_height, 1),
+            "avg_weight": round(report.avg_weight, 2),
+            "height_variation": round(report.height_variation, 4),
+            "weight_variation": round(report.weight_variation, 4),
+            "confidence": round(report.confidence, 4),
+            "details": report.details,
+            "regions": regions_json,
+            "annotated_preview": _img_to_b64(report.annotated_image, max_dim=900) if report.annotated_image is not None else "",
+            "elapsed_ms": round(report.elapsed_ms, 1),
+        })
+
+    @app.route("/api/authenticity-score", methods=["POST"])
+    def authenticity_score():
+        """Compute combined document authenticity score from ALL analyses."""
+        sid = session.get("session_id")
+        source = _get_image(sid, "source")
+        template = _get_image(sid, "template")
+        if source is None:
+            return jsonify({"error": "Upload at least the source image"}), 400
+        scorer = AuthenticityScorer()
+        f_report = None
+        if template is not None:
+            try: f_report = DocumentForensicsEngine().analyze(source, template)
+            except Exception: pass
+        forgery_report = None
+        if template is not None:
+            try:
+                fg = ForgeryDetector()
+                regions = []
+                if f_report and hasattr(f_report, 'tamper_regions'):
+                    regions = [(r.x, r.y, r.width, r.height) for r in f_report.tamper_regions]
+                forgery_report = fg.analyze(source, template, regions)
+            except Exception: pass
+        cm_report = CopyMoveDetector().detect(source)
+        font_report = FontAnalyzer().analyze(source)
+        vault = get_vault()
+        fp_res = vault.search(source if template is None else template, max_results=1)
+        fp_match = None
+        if fp_res and fp_res[0].is_match:
+            fp_match = {"matched": True, "similarity": fp_res[0].similarity_score}
+        result = scorer.compute(
+            forensics_report=f_report,
+            forgery_report=forgery_report,
+            font_report=font_report,
+            copy_move_report=cm_report,
+            fingerprint_match=fp_match,
+        )
+        return jsonify({
+            "ok": True,
+            "overall_score": result.overall_score,
+            "verdict": result.verdict,
+            "category_scores": result.category_scores,
+            "weighted_breakdown": result.weighted_breakdown,
+            "risk_factors": result.risk_factors,
+            "recommendations": result.recommendations,
         })
 
     @app.route("/api/download-result", methods=["GET"])
