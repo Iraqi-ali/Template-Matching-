@@ -30,6 +30,10 @@ from .forgery_detector import (
 from .document_forensics import (
     DocumentForensicsEngine, DocumentForensicsReport, TamperSeverity,
 )
+from .document_fingerprint import FingerprintVault, get_vault
+from .signature_verifier import SignatureVerifier, SignatureReport, SignatureVerdict
+from .metadata_analyzer import MetadataAnalyzer, MetadataReport
+from .forensic_reporter import ForensicReporter
 
 # ---------------------------------------------------------------------------
 # App factory
@@ -477,6 +481,200 @@ def create_app() -> Flask:
 
             "source_shape": list(report.source_shape),
             "template_shape": list(report.template_shape),
+        })
+
+    @app.route("/api/signature-verify", methods=["POST"])
+    def signature_verify():
+        """Verify a signature against original."""
+        sid = session.get("session_id")
+        original = _get_image(sid, "source")
+        suspect = _get_image(sid, "template")
+
+        if original is None or suspect is None:
+            return jsonify({"error": "Upload original signature as Source and suspect as Template"}), 400
+
+        verifier = SignatureVerifier()
+        report = verifier.verify(original, suspect)
+
+        return jsonify({
+            "ok": True,
+            "verdict": report.verdict.name,
+            "verdict_label": report.verdict.label,
+            "confidence": round(report.confidence, 4),
+            "geometry_similarity": round(report.geometry_similarity, 4),
+            "density_similarity": round(report.density_similarity, 4),
+            "topology_similarity": round(report.topology_similarity, 4),
+            "hu_moments_similarity": round(report.hu_moments_similarity, 4),
+            "orb_match_score": round(report.orb_match_score, 4),
+            "details": report.details,
+            "annotated_preview": _img_to_b64(report.annotated_image, max_dim=600) if report.annotated_image is not None else "",
+            "elapsed_ms": round(report.elapsed_ms, 1),
+        })
+
+    @app.route("/api/vault-register", methods=["POST"])
+    def vault_register():
+        """Register the current source image in the fingerprint vault."""
+        sid = session.get("session_id")
+        source = _get_image(sid, "source")
+
+        if source is None:
+            return jsonify({"error": "Upload source image first"}), 400
+
+        data = request.get_json() or {}
+        label = data.get("label", f"Document-{sid[:8]}")
+
+        vault = get_vault()
+        fp = vault.register(source, label=label, tags=data.get("tags", ""))
+
+        return jsonify({
+            "ok": True,
+            "fingerprint_id": fp.fingerprint_id,
+            "label": fp.label,
+            "phash": fp.phash,
+            "sha256": fp.sha256[:16] + "...",
+            "size": f"{fp.width}x{fp.height}",
+        })
+
+    @app.route("/api/vault-search", methods=["POST"])
+    def vault_search():
+        """Search vault for matching fingerprint."""
+        sid = session.get("session_id")
+        source = _get_image(sid, "source")
+
+        if source is None:
+            return jsonify({"error": "Upload source image first"}), 400
+
+        vault = get_vault()
+        results = vault.search(source, max_results=5)
+
+        return jsonify({
+            "ok": True,
+            "results": [
+                {
+                    "id": r.fingerprint.fingerprint_id,
+                    "label": r.fingerprint.label,
+                    "similarity": round(r.similarity_score, 4),
+                    "is_match": r.is_match,
+                    "phash_distance": r.phash_distance,
+                }
+                for r in results
+            ],
+            "total_in_vault": vault.count(),
+        })
+
+    @app.route("/api/vault-list", methods=["GET"])
+    def vault_list():
+        """List all fingerprints in vault."""
+        vault = get_vault()
+        fingerprints = vault.list_all()
+        return jsonify({
+            "ok": True,
+            "count": len(fingerprints),
+            "fingerprints": [
+                {
+                    "id": fp.fingerprint_id,
+                    "label": fp.label,
+                    "size": f"{fp.width}x{fp.height}",
+                    "stored_at": fp.stored_at,
+                    "phash": fp.phash[:8] + "...",
+                }
+                for fp in fingerprints
+            ],
+        })
+
+    @app.route("/api/metadata", methods=["POST"])
+    def analyze_metadata():
+        """Analyze metadata of an uploaded file."""
+        # This needs the actual file path, so we save temp
+        sid = session.get("session_id")
+        source = _get_image(sid, "source")
+
+        if source is None:
+            return jsonify({"error": "Upload an image first"}), 400
+
+        # Save to temp file
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            cv2.imwrite(tmp.name, source)
+            tmp_path = tmp.name
+
+        analyzer = MetadataAnalyzer()
+        report = analyzer.analyze(tmp_path)
+
+        os.unlink(tmp_path)
+
+        return jsonify({
+            "ok": True,
+            "file_name": report.file_name,
+            "file_size_bytes": report.file_size_bytes,
+            "mime_type": report.mime_type,
+            "has_exif": report.has_exif,
+            "camera_make": report.camera_make,
+            "camera_model": report.camera_model,
+            "software_used": report.software_used,
+            "date_original": report.date_original,
+            "has_gps": report.has_gps,
+            "gps_latitude": report.gps_latitude,
+            "gps_longitude": report.gps_longitude,
+            "image_width": report.image_width,
+            "image_height": report.image_height,
+            "anomalies": [a.name for a in report.anomalies],
+            "anomaly_score": round(report.anomaly_score, 4),
+            "is_suspicious": report.is_suspicious,
+            "details": report.details,
+        })
+
+    @app.route("/api/generate-report", methods=["POST"])
+    def generate_report():
+        """Generate comprehensive forensic HTML report."""
+        sid = session.get("session_id")
+        original = _get_image(sid, "source")
+        suspect = _get_image(sid, "template")
+
+        if original is None or suspect is None:
+            return jsonify({"error": "Upload both images first"}), 400
+
+        data = request.get_json() or {}
+
+        # Run forensics
+        f_report = DocumentForensicsEngine().analyze(original, suspect)
+
+        # Fingerprint search
+        vault = get_vault()
+        fp_res = vault.search(suspect, max_results=1)
+        fp_match = {"matched": False, "best_label": "", "similarity": 0}
+        if fp_res and fp_res[0].is_match:
+            r = fp_res[0]
+            fp_match = {"matched": True, "best_label": r.fingerprint.label,
+                        "similarity": r.similarity_score}
+
+        # Build embedded images
+        embedded = {}
+        if f_report.annotated_image is not None:
+            _, buf = cv2.imencode('.png', f_report.annotated_image)
+            embedded['annotated'] = base64.b64encode(buf).decode()
+        if hasattr(f_report, 'forensics_canvas') and f_report.forensics_canvas is not None:
+            _, buf = cv2.imencode('.png', f_report.forensics_canvas)
+            embedded['canvas'] = base64.b64encode(buf).decode()
+
+        reporter = ForensicReporter(
+            case_id=data.get("case_id", ""),
+            examiner=data.get("examiner", "AI Forensic System"),
+        )
+        html = reporter.generate(
+            forensics_report=f_report,
+            fingerprint_result=fp_match,
+            original_path="original",
+            suspect_path="suspect",
+            embedded_images=embedded,
+        )
+
+        return jsonify({
+            "ok": True,
+            "html_report": html,
+            "tamper_score": round(f_report.tamper_score, 4),
+            "severity": f_report.overall_severity.label,
+            "region_count": f_report.region_count,
         })
 
     @app.route("/api/download-result", methods=["GET"])

@@ -25,13 +25,18 @@ from src.forgery_detector import (
     ForgeryDetector, draw_difference_boxes, draw_forgery_report,
     create_full_analysis_canvas,
 )
-from src.forgery_detector import (
-    ForgeryDetector, draw_difference_boxes, draw_forgery_report,
-    create_full_analysis_canvas,
-)
 from src.document_forensics import (
     DocumentForensicsEngine, DocumentForensicsReport, TamperSeverity,
     run_document_forensics,
+)
+from src.document_fingerprint import (
+    FingerprintVault, get_vault, compute_phash, compute_ahash,
+    compute_dhash, hamming_distance,
+)
+from src.metadata_analyzer import MetadataAnalyzer, MetadataReport
+from src.signature_verifier import SignatureVerifier, SignatureReport, SignatureVerdict
+from src.forensic_reporter import (
+    ForensicReporter, generate_forensic_charts, generate_histogram_comparison,
 )
 from src.utils import load_image, save_image, resize_to_max_dim
 
@@ -286,6 +291,161 @@ def cmd_forensics(args):
 
 
 # ---------------------------------------------------------------------------
+# CLI: Fingerprint Vault
+# ---------------------------------------------------------------------------
+
+def cmd_vault(args):
+    """Manage the document fingerprint vault."""
+    vault = get_vault(args.db)
+
+    if args.action == "register":
+        img = load_image(args.image)
+        fp = vault.register(img, label=args.label, file_path=args.image, tags=args.tags or "")
+        print(f"✅ Fingerprint registered!")
+        print(f"   ID:       {fp.fingerprint_id}")
+        print(f"   Label:    {fp.label}")
+        print(f"   pHash:    {fp.phash}")
+        print(f"   SHA-256:  {fp.sha256[:32]}...")
+        print(f"   Size:     {fp.width}×{fp.height}")
+
+    elif args.action == "search":
+        img = load_image(args.image)
+        results = vault.search(img, max_results=args.top)
+        print(f"\n🔍 Search results ({len(results)} found):")
+        for i, r in enumerate(results):
+            icon = "✅" if r.is_match else "❌"
+            print(f"   [{i+1}] {icon} {r.fingerprint.label}")
+            print(f"        Similarity: {r.similarity_score:.2%}")
+            print(f"        pHash dist: {r.phash_distance}")
+
+    elif args.action == "verify":
+        img = load_image(args.image)
+        result = vault.verify(img, args.id)
+        print(f"\n🔍 Verification: {'✅ MATCH' if result.is_match else '❌ NO MATCH'}")
+        print(f"   Label: {result.fingerprint.label}")
+        print(f"   Similarity: {result.similarity_score:.2%}")
+
+    elif args.action == "list":
+        fps = vault.list_all()
+        print(f"\n📋 Vault ({len(fps)} fingerprints):")
+        for fp in fps:
+            print(f"   [{fp.fingerprint_id[:8]}...] {fp.label:30s} {fp.width}×{fp.height}")
+
+    elif args.action == "delete":
+        vault.delete(args.id)
+        print(f"✅ Deleted: {args.id}")
+
+    elif args.action == "stats":
+        print(f"\n📊 Total: {vault.count()} fingerprints")
+        for entry in vault.get_audit_log(5):
+            print(f"   [{entry['timestamp']}] {entry['action']}: {entry['details'][:50]}")
+
+
+# ---------------------------------------------------------------------------
+# CLI: Signature Verification
+# ---------------------------------------------------------------------------
+
+def cmd_signature(args):
+    """Verify a signature against an original."""
+    original = load_image(args.original)
+    suspect = load_image(args.suspect)
+    verifier = SignatureVerifier()
+    report = verifier.verify(original, suspect)
+
+    print(f"\n✍️ SIGNATURE: {report.verdict.label} ({report.confidence:.1%})")
+    print(f"   Geometry={report.geometry_similarity:.3f} Density={report.density_similarity:.3f}")
+    print(f"   Topology={report.topology_similarity:.3f} Hu={report.hu_moments_similarity:.3f}")
+    print(f"   ORB={report.orb_match_score:.3f} Time={report.elapsed_ms:.1f}ms")
+    for d in report.details:
+        print(f"   {d}")
+    if report.annotated_image is not None:
+        save_image(report.annotated_image, args.output or "signature_result.png")
+        print(f"   🖼️ Saved: {args.output or 'signature_result.png'}")
+
+
+# ---------------------------------------------------------------------------
+# CLI: Metadata Analysis
+# ---------------------------------------------------------------------------
+
+def cmd_metadata(args):
+    """Analyze file metadata for forgery indicators."""
+    analyzer = MetadataAnalyzer()
+    report = analyzer.analyze(args.file)
+    for line in report.details:
+        print(f"   {line}")
+    if args.compare:
+        comp = analyzer.compare_metadata(args.file, args.compare)
+        print(f"\n   Compare: {'✅ Consistent' if comp['consistent'] else '❌ Different'}")
+        for d in comp['differences']:
+            print(f"   • {d}")
+
+
+# ---------------------------------------------------------------------------
+# CLI: Full Forensic Report (HTML)
+# ---------------------------------------------------------------------------
+
+def cmd_report(args):
+    """Generate comprehensive professional forensic HTML report."""
+    import os, base64 as b64
+    print("📝 Generating comprehensive forensic report...\n")
+
+    original = load_image(args.original)
+    suspect = load_image(args.suspect)
+
+    # 1. Forensics
+    print("[1/4] 5-method document forensics...")
+    f_report = DocumentForensicsEngine().analyze(original, suspect)
+
+    # 2. Fingerprint
+    print("[2/4] Fingerprint vault search...")
+    vault = get_vault(args.vault_db)
+    fp_res = vault.search(suspect, max_results=1)
+    fp_match = {"matched": False, "best_label": "", "similarity": 0}
+    if fp_res and fp_res[0].is_match:
+        r = fp_res[0]
+        fp_match = {"matched": True, "best_label": r.fingerprint.label,
+                    "similarity": r.similarity_score, "phash_dist": r.phash_distance,
+                    "dhash_dist": r.dhash_distance}
+
+    # 3. Metadata
+    print("[3/4] Metadata analysis...")
+    meta_report = MetadataAnalyzer().analyze(args.suspect)
+
+    # 4. Build report
+    print("[4/4] Generating HTML report + charts...")
+    method_confs = {}
+    if hasattr(f_report, 'method_results'):
+        method_confs = {k: v.get('confidence', 0) for k, v in f_report.method_results.items()}
+    if method_confs:
+        generate_forensic_charts(method_confs, output_dir=args.output_dir)
+    generate_histogram_comparison(original, suspect, output_dir=args.output_dir)
+
+    embedded = {}
+    if f_report.annotated_image is not None:
+        _, buf = cv2.imencode('.png', f_report.annotated_image)
+        embedded['annotated'] = b64.b64encode(buf).decode()
+    if hasattr(f_report, 'forensics_canvas') and f_report.forensics_canvas is not None:
+        _, buf = cv2.imencode('.png', f_report.forensics_canvas)
+        embedded['canvas'] = b64.b64encode(buf).decode()
+
+    reporter = ForensicReporter(case_id=args.case_id or "", examiner=args.examiner or "AI Forensic System")
+    html = reporter.generate(
+        forensics_report=f_report, fingerprint_result=fp_match,
+        metadata_report=meta_report, original_path=args.original,
+        suspect_path=args.suspect, embedded_images=embedded,
+    )
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    report_path = os.path.join(args.output_dir, "forensic_report.html")
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    print(f"\n✅ Report: {report_path}")
+    print(f"   📊 Charts: {args.output_dir}/")
+    print(f"   🔗 Open in browser!")
+
+
+# ---------------------------------------------------------------------------
 # CLI: GUI
 # ---------------------------------------------------------------------------
 
@@ -384,6 +544,55 @@ Examples:
     p_forensics.add_argument("--output-dir", "-o", default="forensics_output",
                              help="Output directory for results (default: forensics_output/)")
     p_forensics.set_defaults(func=cmd_forensics)
+
+    # ---- vault (fingerprint) ----
+    p_vault = sub.add_parser("vault", help="Manage document fingerprint vault (register, search, verify)")
+    p_vault_sub = p_vault.add_subparsers(dest="action", required=True)
+    p_vault_reg = p_vault_sub.add_parser("register", help="Register a document fingerprint")
+    p_vault_reg.add_argument("image", help="Path to the document image")
+    p_vault_reg.add_argument("--label", "-l", required=True, help="Label for this document")
+    p_vault_reg.add_argument("--tags", help="Comma-separated tags")
+    p_vault_reg.add_argument("--db", default="fingerprint_vault.db", help="Vault DB path")
+    p_vault_search = p_vault_sub.add_parser("search", help="Search vault for matching fingerprint")
+    p_vault_search.add_argument("image", help="Path to the suspect image")
+    p_vault_search.add_argument("--db", default="fingerprint_vault.db", help="Vault DB path")
+    p_vault_search.add_argument("--top", type=int, default=5, help="Max results")
+    p_vault_verify = p_vault_sub.add_parser("verify", help="Verify against specific fingerprint")
+    p_vault_verify.add_argument("image", help="Path to the suspect image")
+    p_vault_verify.add_argument("--id", required=True, help="Fingerprint ID to verify against")
+    p_vault_verify.add_argument("--db", default="fingerprint_vault.db", help="Vault DB path")
+    p_vault_list = p_vault_sub.add_parser("list", help="List all fingerprints in vault")
+    p_vault_list.add_argument("--db", default="fingerprint_vault.db", help="Vault DB path")
+    p_vault_del = p_vault_sub.add_parser("delete", help="Delete a fingerprint")
+    p_vault_del.add_argument("--id", required=True, help="Fingerprint ID to delete")
+    p_vault_del.add_argument("--db", default="fingerprint_vault.db", help="Vault DB path")
+    p_vault_stats = p_vault_sub.add_parser("stats", help="Show vault statistics")
+    p_vault_stats.add_argument("--db", default="fingerprint_vault.db", help="Vault DB path")
+    p_vault.set_defaults(func=cmd_vault)
+
+    # ---- signature ----
+    p_sig = sub.add_parser("signature", help="Signature verification — detect forged signatures")
+    p_sig.add_argument("original", help="Path to the original/genuine signature image")
+    p_sig.add_argument("suspect", help="Path to the suspect signature image")
+    p_sig.add_argument("--output", "-o", help="Output image path")
+    p_sig.set_defaults(func=cmd_signature)
+
+    # ---- metadata ----
+    p_meta = sub.add_parser("metadata", help="Metadata & EXIF analysis for forgery detection")
+    p_meta.add_argument("file", help="Path to the image file")
+    p_meta.add_argument("--compare", help="Compare with another file's metadata")
+    p_meta.set_defaults(func=cmd_metadata)
+
+    # ---- report (full forensic) ----
+    p_report = sub.add_parser("report", help="Generate comprehensive professional forensic HTML report")
+    p_report.add_argument("original", help="Path to the ORIGINAL document")
+    p_report.add_argument("suspect", help="Path to the SUSPECT document")
+    p_report.add_argument("--output-dir", "-o", default="forensic_report",
+                          help="Output directory (default: forensic_report/)")
+    p_report.add_argument("--case-id", help="Case ID for the report")
+    p_report.add_argument("--examiner", default="AI Forensic System", help="Examiner name")
+    p_report.add_argument("--vault-db", default="fingerprint_vault.db", help="Vault DB path")
+    p_report.set_defaults(func=cmd_report)
 
     # ---- compare ----
     p_comp = sub.add_parser("compare", help="Compare ALL matching methods side-by-side")

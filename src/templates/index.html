@@ -431,6 +431,20 @@
                     🔴 فحص المستندات الجنائي (5 طرق)
                 </button>
             </div>
+            <div class="btn-row" style="margin-top: 4px">
+                <button class="btn btn-secondary" id="signatureBtn" onclick="runSignatureVerify()" disabled
+                        style="font-size: 0.8rem;" data-lang="ar">
+                    ✍️ التحقق من التوقيع
+                </button>
+                <button class="btn btn-secondary" id="vaultRegBtn" onclick="registerInVault()" disabled
+                        style="font-size: 0.8rem;" data-lang="ar">
+                    🗄️ تسجيل البصمة
+                </button>
+                <button class="btn btn-secondary" id="reportBtn" onclick="generateFullReport()" disabled
+                        style="font-size: 0.8rem;" data-lang="ar">
+                    📄 تقرير احترافي
+                </button>
+            </div>
         </div>
     </div>
 
@@ -917,6 +931,90 @@
         document.getElementById('compareBtn').disabled = !ready;
         document.getElementById('forgeryBtn').disabled = !ready;
         document.getElementById('forensicsBtn').disabled = !ready;
+        document.getElementById('signatureBtn').disabled = !ready;
+        document.getElementById('vaultRegBtn').disabled = !hasSource;
+        document.getElementById('reportBtn').disabled = !ready;
+    }
+
+    // ═══════════════════════════════════════════
+    // Signature Verification
+    // ═══════════════════════════════════════════
+    async function runSignatureVerify() {
+        if (!hasSource || !hasTemplate) return;
+        setLoading(true);
+        try {
+            const res = await fetch('/api/signature-verify', { method: 'POST' });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+            document.getElementById('emptyState').style.display = 'none';
+            const img = document.getElementById('resultImage');
+            img.src = data.annotated_preview || '';
+            img.style.display = 'block';
+            showToast(`✍️ ${data.verdict_label} (${(data.confidence*100).toFixed(1)}%)`);
+        } catch(e) { showToast(e.message); }
+        setLoading(false);
+    }
+
+    // ═══════════════════════════════════════════
+    // Fingerprint Vault
+    // ═══════════════════════════════════════════
+    async function registerInVault() {
+        if (!hasSource) return;
+        const label = prompt('Document label/name:', 'Document-' + new Date().toISOString().slice(0,10));
+        if (!label) return;
+        try {
+            const res = await fetch('/api/vault-register', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({label}),
+            });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+            showToast(`🗄️ Registered: ${data.label} (${data.fingerprint_id.slice(0,8)}...)`);
+        } catch(e) { showToast(e.message); }
+    }
+
+    async function searchVault() {
+        if (!hasSource) return;
+        try {
+            const res = await fetch('/api/vault-search', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({}),
+            });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+            const matches = data.results.filter(r => r.is_match);
+            if (matches.length > 0) {
+                showToast(`✅ Found: ${matches[0].label} (${(matches[0].similarity*100).toFixed(1)}%)`);
+            } else {
+                showToast('❌ No match in vault');
+            }
+        } catch(e) { showToast(e.message); }
+    }
+
+    // ═══════════════════════════════════════════
+    // Full Report Generation
+    // ═══════════════════════════════════════════
+    async function generateFullReport() {
+        if (!hasSource || !hasTemplate) return;
+        setLoading(true);
+        try {
+            const res = await fetch('/api/generate-report', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({}),
+            });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+
+            // Open report in new window
+            const win = window.open('', '_blank', 'width=900,height=700');
+            win.document.write(data.html_report);
+            win.document.close();
+            showToast('📄 Report opened in new window');
+        } catch(e) { showToast(e.message); }
+        setLoading(false);
     }
 
     // ═══════════════════════════════════════════
