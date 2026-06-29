@@ -630,7 +630,7 @@ def create_app() -> Flask:
 
     @app.route("/api/generate-report", methods=["POST"])
     def generate_report():
-        """Generate comprehensive forensic HTML report."""
+        """Generate comprehensive forensic HTML report with ALL analysis results."""
         sid = session.get("session_id")
         original = _get_image(sid, "source")
         suspect = _get_image(sid, "template")
@@ -640,26 +640,46 @@ def create_app() -> Flask:
 
         data = request.get_json() or {}
 
-        # Run forensics
+        # Run ALL analyses
         f_report = DocumentForensicsEngine().analyze(original, suspect)
-
-        # Fingerprint search
+        fg = ForgeryDetector()
+        regions = []
+        if f_report and hasattr(f_report, 'tamper_regions'):
+            regions = [(r.x, r.y, r.width, r.height) for r in f_report.tamper_regions]
+        forgery_report = fg.analyze(original, suspect, regions)
+        cm_report = CopyMoveDetector().detect(suspect)
+        font_report = FontAnalyzer().analyze(suspect)
+        sig_report = SignatureVerifier().verify(original, suspect)
+        meta_report = MetadataAnalyzer().analyze("suspect")
+        try: adv_report = AdvancedDetectors().analyze(original, suspect)
+        except Exception: adv_report = None
+        scorer = AuthenticityScorer()
         vault = get_vault()
         fp_res = vault.search(suspect, max_results=1)
         fp_match = {"matched": False, "best_label": "", "similarity": 0}
         if fp_res and fp_res[0].is_match:
             r = fp_res[0]
             fp_match = {"matched": True, "best_label": r.fingerprint.label,
-                        "similarity": r.similarity_score}
+                        "similarity": r.similarity_score, "phash_dist": r.phash_distance}
+        das = scorer.compute(forensics_report=f_report, forgery_report=forgery_report,
+                            font_report=font_report, copy_move_report=cm_report,
+                            signature_report=sig_report, metadata_report=meta_report,
+                            fingerprint_match=fp_match)
 
         # Build embedded images
         embedded = {}
         if f_report.annotated_image is not None:
             _, buf = cv2.imencode('.png', f_report.annotated_image)
-            embedded['annotated'] = base64.b64encode(buf).decode()
+            embedded['forensics_annotated'] = base64.b64encode(buf).decode()
         if hasattr(f_report, 'forensics_canvas') and f_report.forensics_canvas is not None:
             _, buf = cv2.imencode('.png', f_report.forensics_canvas)
-            embedded['canvas'] = base64.b64encode(buf).decode()
+            embedded['forensics_canvas'] = base64.b64encode(buf).decode()
+        if cm_report.annotated_image is not None:
+            _, buf = cv2.imencode('.png', cm_report.annotated_image)
+            embedded['copymove'] = base64.b64encode(buf).decode()
+        if font_report.annotated_image is not None:
+            _, buf = cv2.imencode('.png', font_report.annotated_image)
+            embedded['font'] = base64.b64encode(buf).decode()
 
         reporter = ForensicReporter(
             case_id=data.get("case_id", ""),
@@ -667,7 +687,14 @@ def create_app() -> Flask:
         )
         html = reporter.generate(
             forensics_report=f_report,
+            forgery_report=forgery_report,
             fingerprint_result=fp_match,
+            signature_report=sig_report,
+            metadata_report=meta_report,
+            copy_move_report=cm_report,
+            font_report=font_report,
+            advanced_report=adv_report,
+            das_report=das,
             original_path="original",
             suspect_path="suspect",
             embedded_images=embedded,
@@ -679,6 +706,8 @@ def create_app() -> Flask:
             "tamper_score": round(f_report.tamper_score, 4),
             "severity": f_report.overall_severity.label,
             "region_count": f_report.region_count,
+            "das_score": das.overall_score,
+            "das_verdict": das.verdict,
         })
 
     @app.route("/api/advanced-detect", methods=["POST"])

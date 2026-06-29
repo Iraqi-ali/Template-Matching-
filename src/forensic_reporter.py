@@ -87,39 +87,36 @@ class ForensicReporter:
     def generate(
         self,
         forensics_report: Any = None,
+        forgery_report: Any = None,
         fingerprint_result: Optional[Dict] = None,
         metadata_report: Optional[Any] = None,
         signature_report: Optional[Any] = None,
+        copy_move_report: Optional[Any] = None,
+        font_report: Optional[Any] = None,
+        advanced_report: Optional[Any] = None,
+        das_report: Optional[Any] = None,
         original_path: str = "",
         suspect_path: str = "",
         embedded_images: Optional[Dict[str, str]] = None,
     ) -> str:
-        """
-        Generate a complete forensic HTML report.
-
-        Returns HTML string that can be saved as .html or printed to PDF.
-        """
+        """Generate complete forensic HTML report with ALL analysis results."""
         report = ForensicPDFReport(
             case_id=self.case_id,
-            case_title="Document Forensics Analysis",
+            case_title="Document Forensics Analysis — Complete Report",
             examiner=self.examiner,
             date=self.date,
             original_file=original_path,
             suspect_file=suspect_path,
         )
 
-        # Extract data from forensics report
+        # Extract ALL data
         if forensics_report is not None:
             report.tamper_score = getattr(forensics_report, 'tamper_score', 0.0)
             report.severity = getattr(getattr(forensics_report, 'overall_severity', None), 'label', 'Unknown')
             report.overall_verdict = "TAMPERED" if getattr(forensics_report, 'is_tampered', False) else "CLEAN"
-
-            # Method results
             if hasattr(forensics_report, 'method_results'):
                 for name, result in forensics_report.method_results.items():
                     report.method_results[name] = result.get('confidence', 0)
-
-            # Regions
             if hasattr(forensics_report, 'tamper_regions'):
                 for r in forensics_report.tamper_regions:
                     report.regions.append({
@@ -129,11 +126,9 @@ class ForensicReporter:
                         'description': r.description,
                     })
 
-        # Fingerprint
+        # Store all sub-reports
         if fingerprint_result:
             report.fingerprint_match = fingerprint_result
-
-        # Metadata
         if metadata_report is not None:
             report.metadata_report = {
                 'anomalies': [a.value for a in getattr(metadata_report, 'anomalies', [])],
@@ -142,8 +137,6 @@ class ForensicReporter:
                 'date_original': getattr(metadata_report, 'date_original', ''),
                 'has_gps': getattr(metadata_report, 'has_gps', False),
             }
-
-        # Signature
         if signature_report is not None:
             report.signature_report = {
                 'verdict': getattr(signature_report, 'verdict', None).label if hasattr(signature_report, 'verdict') and signature_report.verdict else '',
@@ -155,7 +148,13 @@ class ForensicReporter:
                 'orb': getattr(signature_report, 'orb_match_score', 0),
             }
 
-        # Build HTML
+        # Store new report data directly
+        self._cm = copy_move_report
+        self._font = font_report
+        self._adv = advanced_report
+        self._das = das_report
+        self._fg = forgery_report
+
         html = self._build_html(report, embedded_images or {})
         return html
 
@@ -308,9 +307,98 @@ tr:nth-child(even) {{ background:#f8f9fa; }}
     </tr>"""
             html += "</table>"
 
+        # ================================================================
+        # NEW SECTIONS: Copy-Move, Font, Advanced, DAS
+        # ================================================================
+
+        # Copy-Move
+        if self._cm is not None:
+            html += f"""
+<h2>8. Copy-Move Forgery Detection</h2>
+<table>
+    <tr><th>Metric</th><th>Value</th></tr>
+    <tr><td>Clones Detected</td><td style="font-weight:bold;color:{'#e74c3c' if self._cm.has_clones else '#27ae60'}">{self._cm.clone_count} clone(s)</td></tr>
+    <tr><td>Confidence</td><td>{self._cm.confidence:.1%}</td></tr>
+    <tr><td>Analysis Time</td><td>{self._cm.elapsed_ms:.0f} ms</td></tr>
+</table>
+"""
+            if self._cm.has_clones:
+                html += """<div class="warning">⚠ Copy-move forgery detected! Regions have been duplicated within the document.</div>"""
+            else:
+                html += """<div class="success">✅ No copy-move forgery detected.</div>"""
+            for d in getattr(self._cm, 'details', []):
+                html += f'<p style="font-size:8pt;color:#666;margin:2pt 0">• {d}</p>'
+
+        # Font Analysis
+        if self._font is not None:
+            html += f"""
+<h2>9. Font & Text Consistency Analysis</h2>
+<table>
+    <tr><th>Metric</th><th>Value</th></tr>
+    <tr><td>Consistency</td><td style="font-weight:bold;color:{'#27ae60' if self._font.is_consistent else '#f39c12'}">{('✅ Consistent' if self._font.is_consistent else '⚠ Inconsistent')}</td></tr>
+    <tr><td>Inconsistent Regions</td><td>{len(getattr(self._font, 'inconsistent_regions', []))}</td></tr>
+    <tr><td>Average Height</td><td>{self._font.avg_height:.1f} px</td></tr>
+    <tr><td>Average Stroke Weight</td><td>{self._font.avg_weight:.2f}</td></tr>
+    <tr><td>Height Variation</td><td>±{self._font.height_variation:.1%}</td></tr>
+    <tr><td>Weight Variation</td><td>±{self._font.weight_variation:.1%}</td></tr>
+</table>
+"""
+
+        # Advanced Detectors
+        if self._adv is not None:
+            html += f"""
+<h2>10. Advanced Forensic Detection (5 Methods)</h2>
+<table>
+    <tr><th>Method</th><th>Score</th><th>Status</th></tr>
+    <tr><td>JPEG Ghost Detection</td><td>{self._adv.jpeg_ghost_score:.3f}</td><td style="color:{'#e74c3c' if self._adv.jpeg_ghost_detected else '#27ae60'}">{('⚠ Detected' if self._adv.jpeg_ghost_detected else '✅ Clean')}</td></tr>
+    <tr><td>Double JPEG Compression</td><td>{self._adv.double_jpeg_score:.3f}</td><td style="color:{'#e74c3c' if self._adv.double_jpeg_detected else '#27ae60'}">{('⚠ Detected' if self._adv.double_jpeg_detected else '✅ Clean')}</td></tr>
+    <tr><td>Luminance Gradient</td><td>{self._adv.luminance_score:.3f}</td><td style="color:{'#e74c3c' if self._adv.luminance_anomaly else '#27ae60'}">{('⚠ Anomaly' if self._adv.luminance_anomaly else '✅ Consistent')}</td></tr>
+    <tr><td>CFA Pattern</td><td>{self._adv.cfa_score:.3f}</td><td style="color:{'#e74c3c' if self._adv.cfa_anomaly else '#27ae60'}">{('⚠ Anomaly' if self._adv.cfa_anomaly else '✅ Consistent')}</td></tr>
+"""
+            if self._adv.prnu_available:
+                html += f"""    <tr><td>PRNU Fingerprint</td><td>{self._adv.prnu_similarity:.3f}</td><td>Similarity: {self._adv.prnu_similarity:.1%}</td></tr>"""
+            html += f"""
+</table>
+<div class="{'critical' if self._adv.is_suspicious else 'success'}"><strong>Overall Verdict:</strong> {self._adv.verdict} (Risk: {self._adv.overall_risk:.1%})</div>
+"""
+
+        # DAS
+        if self._das is not None:
+            html += f"""
+<h2>11. Document Authenticity Score (DAS)</h2>
+<div style="text-align:center;margin:16pt 0">
+    <div style="font-size:36pt;font-weight:900;color:{'#27ae60' if self._das.overall_score>=70 else '#f39c12' if self._das.overall_score>=40 else '#e74c3c'}">{self._das.overall_score}%</div>
+    <div style="font-size:14pt;font-weight:700;margin-bottom:12pt">{self._das.verdict}</div>
+</div>
+<table>
+    <tr><th>Analysis Category</th><th>Score</th></tr>
+"""
+            for cat, score in self._das.category_scores.items():
+                html += f"""    <tr><td>{cat.replace('_',' ').title()}</td><td>{score:.1f}%</td></tr>"""
+            html += "</table>"
+            if hasattr(self._das, 'risk_factors') and self._das.risk_factors:
+                html += f"""<div class="warning"><strong>⚠ Risk Factors:</strong> {', '.join(self._das.risk_factors)}</div>"""
+            if hasattr(self._das, 'recommendations') and self._das.recommendations:
+                for rec in self._das.recommendations:
+                    html += f'<p style="font-size:9pt;color:#555;margin:2pt 0">💡 {rec}</p>'
+
+        # Forgery Detection
+        if self._fg is not None:
+            html += f"""
+<h2>12. Forgery Detection (ELA/SSIM/Noise)</h2>
+<table>
+    <tr><th>Metric</th><th>Value</th></tr>
+    <tr><td>Risk Score</td><td>{getattr(self._fg,'risk_score',0):.3f}</td></tr>
+    <tr><td>SSIM Score</td><td>{getattr(self._fg,'ssim_score',0):.4f}</td></tr>
+    <tr><td>ELA Score</td><td>{getattr(self._fg,'ela_score',0):.4f}</td></tr>
+    <tr><td>Noise Consistency</td><td>{getattr(self._fg,'noise_consistency',0):.4f}</td></tr>
+    <tr><td>Histogram Correlation</td><td>{getattr(self._fg,'histogram_correlation',0):.4f}</td></tr>
+</table>
+"""
+
         # Evidence images
         html += """
-<h2>8. Visual Evidence</h2>
+<h2>13. Visual Evidence</h2>
 <div class="evidence-panel">
 """
         for key, b64 in list(images.items())[:4]:
