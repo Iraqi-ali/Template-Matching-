@@ -290,7 +290,7 @@ td{padding:6px 10px;border-bottom:1px solid #1a2a3a}tbody tr:hover{background:rg
 <div class="toast" id="toast"></div>
 
 <script>
-var S={hasSrc:false,hasTpl:false,currentTab:'match',lang:'ar',cropMode:false};
+var S={hasSrc:false,hasTpl:false,currentTab:'match',lang:'ar',cropMode:false,totalVault:0};
 
 // Init tabs
 document.querySelectorAll('.tab-btn').forEach(b=>{b.onclick=function(){
@@ -389,9 +389,9 @@ function upd(){
 
 // MATCH
 async function runMatch(){
-  if(!S.hasSrc||!S.hasTpl)return;loading(true);
-  try{var r=await fetch('/api/match',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:document.getElementById('method').value,threshold:parseFloat(document.getElementById('threshold').value),multi_scale:document.getElementById('multiScale').checked})});
-    var d=await r.json();if(!d.ok)throw new Error(d.error);
+  if(!S.hasSrc||!S.hasTpl)return;loading(true,'🔍 جاري المطابقة والتحقق...');hideCards();setProgress(15,'تهيئة الصور...');
+  try{var r=await fetch('/api/match',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:document.getElementById('method').value,threshold:parseFloat(document.getElementById('threshold').value),multi_scale:document.getElementById('multiScale').checked})});setProgress(60,'جاري matchTemplate + z-score...');
+    var d=await r.json();if(!d.ok)throw new Error(d.error);setProgress(85,'التحقق متعدد الطبقات (SSIM, Histogram, Edge)...');
     showImg(d.result_preview);
     showStats((d.validation&&d.validation.is_valid?'✅ حقيقي':'⚠ غير موثوق'),d.match_count+' تطابق',d.method?d.method.split('(')[0].trim():'',d.elapsed_ms+' ms');
     var card=document.getElementById('matchCard');card.style.display='block';
@@ -402,22 +402,26 @@ async function runMatch(){
     if(d.validation)vi.innerHTML=d.validation.reasons.map(function(r){return'<div style="color:'+(r.indexOf('✓')===0?'var(--green)':'var(--orange)')+';margin:2px 0">'+r+'</div>'}).join('');
     else vi.innerHTML='';
     document.getElementById('downloadBtn').disabled=false;
-  }catch(e){toast(e.message,'err')}loading(false);
+    var stMsg=d.match_count+' تطابق. '+(d.validation&&d.validation.is_valid?'✅ جميع فحوصات التحقق اجتازت بنجاح — التطابق حقيقي.':'⚠ فشلت بعض فحوصات التحقق — قد يكون التطابق غير حقيقي.')+' الطريقة: '+(d.method||'').split('(')[0].trim()+'. الزمن: '+d.elapsed_ms+'ms.';
+    setStatus('🔍 '+stMsg);setProgress(100,'✅ اكتمل');setTimeout(clearStatus,3000);
+  }catch(e){toast(e.message,'err');clearStatus()}loading(false);
 }
 
 async function runCompare(){
-  if(!S.hasSrc||!S.hasTpl)return;loading(true);
-  try{var r=await fetch('/api/compare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({threshold:parseFloat(document.getElementById('threshold').value)})});
+  if(!S.hasSrc||!S.hasTpl)return;loading(true,'📊 جاري مقارنة جميع طرق المطابقة...');hideCards();setProgress(20,'تهيئة 6 طرق...');
+  try{var r=await fetch('/api/compare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({threshold:parseFloat(document.getElementById('threshold').value)})});setProgress(70,'مقارنة CCOEFF, CCORR, SQDIFF...');
     var d=await r.json();if(!d.ok)throw new Error(d.error);
     showImg(d.comparison_preview);showStats('📊 مقارنة',(d.methods||[]).length+' طرق','','');
-  }catch(e){toast(e.message,'err')}loading(false);
+    setStatus('📊 تمت مقارنة '+(d.methods||[]).length+' طرق مطابقة. كل طريقة تظهر في لوحة منفصلة مع عدد التطابقات والزمن.');
+    setProgress(100,'✅ اكتمل');setTimeout(clearStatus,3000);
+  }catch(e){toast(e.message,'err');clearStatus()}loading(false);
 }
 
 // FORENSICS
 async function runForensics(){
-  if(!S.hasSrc||!S.hasTpl)return;loading(true);hideCards();
-  try{var r=await fetch('/api/document-forensics',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    var d=await r.json();if(!d.ok)throw new Error(d.error);
+  if(!S.hasSrc||!S.hasTpl)return;loading(true,'🔬 جاري الفحص الجنائي (5 طرق)...');hideCards();setProgress(10,'محاذاة الصور (ECC)...');
+  try{var r=await fetch('/api/document-forensics',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});setProgress(40,'❶ فرق البكسل + ❷ عرض الخط...');setTimeout(function(){setProgress(65,'❸ تناسق الحبر (LAB) + ❹ تحليل التباعد...');},500);setTimeout(function(){setProgress(85,'❺ النسيج والتدرج + تجميع heatmap...');},1000);
+    var d=await r.json();if(!d.ok)throw new Error(d.error);setProgress(95,'رسم النتائج...');
     showImg(d.annotated_preview||d.canvas_preview);
     showStats(d.overall_severity_label,(d.tamper_score*100).toFixed(1)+'%',d.region_count+' مناطق',d.elapsed_ms+' ms');
     var card=document.getElementById('forensicsCard');card.style.display='block';
@@ -433,14 +437,16 @@ async function runForensics(){
     for(var k in d.method_results||{}){var v=d.method_results[k];
       md.innerHTML+='<span style="background:var(--surface2);padding:4px 10px;border-radius:6px;font-size:.7rem;color:'+(v.confidence>.5?'var(--red)':v.confidence>.25?'var(--orange)':'var(--green)')+'">'+(names[k]||k)+': '+(v.confidence*100).toFixed(0)+'%</span>';}
     document.getElementById('fgDetails').innerHTML=(d.summary||[]).slice(4,12).join('<br>');
-  }catch(e){toast(e.message,'err')}loading(false);
+    setStatus('🔬 5 طرق فحص. التزوير: '+(d.tamper_score*100).toFixed(1)+'%. المساحة: '+d.tamper_percentage+'%. المناطق: '+d.region_count+'. '+(d.is_tampered?'⛔ تم اكتشاف تلاعب!':'✅ المستند سليم.'));
+    setProgress(100,'✅ اكتمل');setTimeout(clearStatus,3500);
+  }catch(e){toast(e.message,'err');clearStatus()}loading(false);
 }
 
 // SIGNATURE
 async function runSignature(){
-  if(!S.hasSrc||!S.hasTpl)return;loading(true);hideCards();
-  try{var r=await fetch('/api/signature-verify',{method:'POST'});
-    var d=await r.json();if(!d.ok)throw new Error(d.error);
+  if(!S.hasSrc||!S.hasTpl)return;loading(true,'✍️ جاري التحقق من التوقيع (5 طرق)...');hideCards();setProgress(20,'استخراج منطقة التوقيع...');
+  try{var r=await fetch('/api/signature-verify',{method:'POST'});setProgress(50,'تحليل هندسي + كثافة + طوبولوجيا...');setTimeout(function(){setProgress(75,'Hu Moments + ORB matching...');},400);
+    var d=await r.json();if(!d.ok)throw new Error(d.error);setProgress(95,'تصنيف النتيجة...');
     if(d.annotated_preview)showImg(d.annotated_preview);
     var card=document.getElementById('sigCard');card.style.display='block';
     var badge=document.getElementById('sigBadge');badge.textContent=d.verdict_label;
@@ -451,7 +457,9 @@ async function runSignature(){
     document.getElementById('sigTopo').textContent=d.topology_similarity.toFixed(3);
     document.getElementById('sigOrb').textContent=d.orb_match_score.toFixed(3);
     showStats(d.verdict_label,(d.confidence*100).toFixed(1)+'% ثقة','5 طرق',d.elapsed_ms+' ms');
-  }catch(e){toast(e.message,'err')}loading(false);
+    setStatus('✍️ '+d.verdict_label+' (ثقة: '+(d.confidence*100).toFixed(1)+'%). الهندسة: '+d.geometry_similarity.toFixed(2)+' | الكثافة: '+d.density_similarity.toFixed(2)+' | الطوبولوجيا: '+d.topology_similarity.toFixed(2)+' | Hu: '+d.hu_moments_similarity.toFixed(2)+' | ORB: '+d.orb_match_score.toFixed(2)+'. الزمن: '+d.elapsed_ms+'ms.');
+    setProgress(100,'✅ اكتمل');setTimeout(clearStatus,3500);
+  }catch(e){toast(e.message,'err');clearStatus()}loading(false);
 }
 
 // VAULT
@@ -467,30 +475,36 @@ function onVaultSelect(){document.getElementById('vaultActions').style.display=d
 
 async function vaultRegister(){
   if(!S.hasSrc)return;var label=prompt('اسم المستند:','مستند-'+new Date().toISOString().slice(0,10));if(!label)return;
-  try{var r=await fetch('/api/vault-register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:label})});
+  loading(true,'🗄️ جاري تسجيل البصمة...');setProgress(30,'حساب pHash, aHash, dHash, cHash...');
+  try{var r=await fetch('/api/vault-register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:label})});setProgress(80,'تخزين في SQLite + SHA-256...');
     var d=await r.json();if(!d.ok)throw new Error(d.error);
-    toast('✅ تم التسجيل: '+d.label,'ok');vaultList();
-  }catch(e){toast(e.message,'err')}
+    setStatus('🗄️ تم تسجيل: '+d.label+' (ID: '+d.fingerprint_id.slice(0,8)+'...). pHash: '+d.phash+'. '+d.size+'. يمكن الآن المقارنة بدون إعادة رفع الأصل.');
+    toast('✅ تم التسجيل: '+d.label,'ok');vaultList();setProgress(100,'✅ اكتمل');setTimeout(clearStatus,3500);
+  }catch(e){toast(e.message,'err');clearStatus()}loading(false);
 }
 
 async function vaultCompare(){
-  if(!S.hasSrc)return;var id=document.getElementById('vaultSelect').value;if(!id)return;loading(true);
-  try{var r=await fetch('/api/vault-search',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  if(!S.hasSrc)return;var id=document.getElementById('vaultSelect').value;if(!id)return;loading(true,'🔍 جاري المقارنة مع البصمة...');setProgress(30,'حساب تجزئات الصورة...');
+  try{var r=await fetch('/api/vault-search',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});setProgress(70,'مقارنة Hamming distance...');
     var d=await r.json();if(!d.ok)throw new Error(d.error);
     var m=null;for(var i=0;i<d.results.length;i++){if(d.results[i].id===id){m=d.results[i];break}}
     if(m){document.getElementById('vaultResult').innerHTML='<div style="margin-top:8px;padding:8px;border-radius:8px;background:'+(m.is_match?'rgba(16,185,129,.1)':'rgba(239,68,68,.1)')+'"><strong>'+(m.is_match?'✅ متطابق':'❌ غير متطابق')+'</strong><br>البصمة: '+m.label+'<br>التشابه: '+(m.similarity*100).toFixed(2)+'%<br>مسافة pHash: '+m.phash_distance+'</div>';
+      setStatus((m.is_match?'✅ تطابق! ':'❌ غير متطابق. ')+'التشابه: '+(m.similarity*100).toFixed(2)+'%. Hamming: '+m.phash_distance+'/64. '+(m.is_match?'المستند يطابق البصمة المخزنة.':'المستند مختلف — قد يكون مزوراً.'));
       toast(m.is_match?'✅ متطابق!':'❌ غير متطابق',m.is_match?'ok':'err');}
-  }catch(e){toast(e.message,'err')}loading(false);
+    setProgress(100,'✅ اكتمل');setTimeout(clearStatus,3000);
+  }catch(e){toast(e.message,'err');clearStatus()}loading(false);
 }
 
 async function vaultSearch(){
-  if(!S.hasSrc)return;loading(true);
-  try{var r=await fetch('/api/vault-search',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    var d=await r.json();if(!d.ok)throw new Error(d.error);
+  if(!S.hasSrc)return;loading(true,'🔍 جاري البحث في '+S.totalVault+' بصمة...');setProgress(40,'حساب التجزئات + مقارنة...');
+  try{var r=await fetch('/api/vault-search',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});setProgress(80,'ترتيب النتائج...');
+    var d=await r.json();if(!d.ok)throw new Error(d.error);S.totalVault=d.total_in_vault;
     var matches=d.results.filter(function(x){return x.is_match});
     document.getElementById('vaultResult').innerHTML=d.results.map(function(x){return'<div style="margin:4px 0;padding:6px;border-radius:6px;background:'+(x.is_match?'rgba(16,185,129,.1)':'rgba(239,68,68,.05)')+';font-size:.75rem">'+(x.is_match?'✅':'❌')+' '+x.label+' — تشابه '+(x.similarity*100).toFixed(1)+'%</div>'}).join('');
-    if(matches.length)toast('✅ وجد '+matches.length+' تطابق','ok');else toast('❌ لا يوجد تطابق','err');
-  }catch(e){toast(e.message,'err')}loading(false);
+    if(matches.length){toast('✅ وجد '+matches.length+' تطابق','ok');setStatus('✅ '+matches.length+' بصمة مطابقة من '+d.total_in_vault+' مخزنة. أفضل تطابق: '+matches[0].label+' ('+(matches[0].similarity*100).toFixed(1)+'%).');}
+    else{toast('❌ لا يوجد تطابق','err');setStatus('❌ لم يتم العثور على تطابق من بين '+d.total_in_vault+' بصمة. المستند غير معروف.');}
+    setProgress(100,'✅ اكتمل');setTimeout(clearStatus,3500);
+  }catch(e){toast(e.message,'err');clearStatus()}loading(false);
 }
 
 async function vaultDelete(){
@@ -500,22 +514,25 @@ async function vaultDelete(){
 
 // REPORT
 async function genReport(){
-  if(!S.hasSrc||!S.hasTpl)return;loading(true);
-  try{var r=await fetch('/api/generate-report',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    var d=await r.json();if(!d.ok)throw new Error(d.error);
+  if(!S.hasSrc||!S.hasTpl)return;loading(true,'📄 جاري إنشاء التقرير الاحترافي...');hideCards();setProgress(15,'تشغيل الفحص الجنائي...');
+  try{var r=await fetch('/api/generate-report',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});setProgress(55,'البحث في بصمات المستندات...');setTimeout(function(){setProgress(80,'توليد المخططات والرسوم البيانية...');},700);
+    var d=await r.json();if(!d.ok)throw new Error(d.error);setProgress(95,'تنسيق التقرير النهائي...');
     var w=window.open('','_blank','width=1000,height=750');w.document.write(d.html_report);w.document.close();
-    toast('📄 تم فتح التقرير في نافذة جديدة','ok');
-  }catch(e){toast(e.message,'err')}loading(false);
+    setStatus('📄 تقرير جنائي احترافي. يحتوي: صفحة غلاف، ملخص، نتائج 5 طرق، بصمات، Metadata، كتالوج المناطق، أدلة بصرية. التزوير: '+(d.tamper_score*100).toFixed(1)+'%. '+d.region_count+' مناطق.');
+    toast('📄 تم فتح التقرير في نافذة جديدة','ok');setProgress(100,'✅ اكتمل');setTimeout(clearStatus,4000);
+  }catch(e){toast(e.message,'err');clearStatus()}loading(false);
 }
 
 async function runMetadata(){
-  if(!S.hasSrc)return;loading(true);
-  try{var r=await fetch('/api/metadata',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  if(!S.hasSrc)return;loading(true,'📋 جاري تحليل البيانات الوصفية...');hideCards();setProgress(30,'استخراج EXIF...');
+  try{var r=await fetch('/api/metadata',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});setProgress(70,'تحليل الشذوذ...');
     var d=await r.json();if(!d.ok)throw new Error(d.error);
     var card=document.getElementById('metaCard');card.style.display='block';
     document.getElementById('metaContent').innerHTML=(d.details||[]).join('<br>');
     showStats(d.is_suspicious?'⚠ مشبوه':'✅ سليم',(d.anomalies||[]).length+' شذوذ',d.camera_make||'N/A','');
-  }catch(e){toast(e.message,'err')}loading(false);
+    setStatus('📋 Metadata: '+(d.is_suspicious?'⚠ تم اكتشاف '+(d.anomalies||[]).length+' شذوذ!':'✅ البيانات الوصفية سليمة.')+' الكاميرا: '+(d.camera_make||'غير متوفرة')+'. البرمجيات: '+(d.software_used||'غير متوفرة')+'.');
+    setProgress(100,'✅ اكتمل');setTimeout(clearStatus,3000);
+  }catch(e){toast(e.message,'err');clearStatus()}loading(false);
 }
 
 // COPY-MOVE
