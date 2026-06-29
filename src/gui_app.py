@@ -22,6 +22,9 @@ from .forgery_detector import (
     ForgeryDetector, draw_difference_boxes, draw_forgery_report,
     create_full_analysis_canvas,
 )
+from .document_forensics import (
+    DocumentForensicsEngine, DocumentForensicsReport, TamperSeverity,
+)
 from .utils import load_image, resize_to_max_dim
 
 
@@ -119,7 +122,12 @@ class TemplateMatchingApp:
                   activebackground="#94e2d5", font=("Segoe UI", 9, "bold"),
                   padx=16, pady=4).pack(side=tk.RIGHT, padx=6)
 
-        tk.Button(toolbar, text="💾 Save Result", command=self._save_result, **btn_style).pack(side=tk.RIGHT, padx=2)
+        tk.Button(toolbar, text="� Forensics", command=self._run_forensics,
+                  bg="#d2991d", fg="#000", relief=tk.FLAT,
+                  activebackground="#e2b94d", font=("Segoe UI", 9, "bold"),
+                  padx=14, pady=4).pack(side=tk.RIGHT, padx=4)
+
+        tk.Button(toolbar, text="�💾 Save Result", command=self._save_result, **btn_style).pack(side=tk.RIGHT, padx=2)
 
         # ---- Main content area (3 panels) ----
         content = tk.Frame(self.root, bg=BG_COLOR)
@@ -327,6 +335,64 @@ class TemplateMatchingApp:
     def _on_error(self, msg: str):
         self.status_label.configure(text=f" ❌ Error: {msg}")
         messagebox.showerror("Matching Error", msg)
+
+    # ------------------------------------------------------------------
+    # Document Forensics
+    # ------------------------------------------------------------------
+
+    def _run_forensics(self):
+        """Run 5-method document forensics analysis."""
+        if self.source_img is None or self.template_img is None:
+            messagebox.showwarning("Missing Images",
+                                   "Load ORIGINAL as Source and SUSPECT as Template.")
+            return
+
+        self.status_label.configure(text=" Running 5-method document forensics...")
+
+        def _worker():
+            try:
+                engine = DocumentForensicsEngine()
+                report = engine.analyze(self.source_img, self.template_img, align=True)
+
+                self.last_forensics = report
+
+                # Show result in the result panel
+                if report.annotated_image is not None:
+                    self.root.after(0, lambda: self._show_image(
+                        report.annotated_image,
+                        self.result_canvas, self.result_info, "Forensics"
+                    ))
+
+                # Show summary
+                self.root.after(0, lambda: self._show_forensics_result(report))
+            except Exception as e:
+                self.root.after(0, lambda: self._on_error(str(e)))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _show_forensics_result(self, report: DocumentForensicsReport):
+        self.result_img = report.annotated_image
+
+        severity_color = {
+            "NONE": "🟢", "MINOR": "🟡", "SUSPICIOUS": "🟠",
+            "SIGNIFICANT": "🔴", "MAJOR": "🔴", "CRITICAL": "⛔",
+        }.get(report.overall_severity.name, "⚪")
+
+        status = (
+            f" {severity_color} FORENSICS: {report.overall_severity.label}  "
+            f"|  Score: {report.tamper_score:.1%}  "
+            f"|  Area: {report.tamper_percentage:.1f}%  "
+            f"|  Regions: {report.region_count}  "
+            f"|  {report.elapsed_ms:.0f}ms"
+        )
+        self.status_label.configure(text=status)
+
+        # Show popup with detailed summary
+        detail_text = "\n".join(report.summary_lines[:25])
+        messagebox.showinfo(
+            "Document Forensics Report",
+            detail_text if detail_text else "Analysis complete."
+        )
 
     # ------------------------------------------------------------------
     # Save

@@ -425,6 +425,12 @@
                     🔬 كشف التزوير وتحليل الاختلافات
                 </button>
             </div>
+            <div class="btn-row" style="margin-top: 4px">
+                <button class="btn btn-primary" id="forensicsBtn" onclick="runDocumentForensics()" disabled
+                        style="background: #c0392b; font-size: 0.9rem;" data-lang="ar">
+                    🔴 فحص المستندات الجنائي (5 طرق)
+                </button>
+            </div>
         </div>
     </div>
 
@@ -510,6 +516,87 @@
             <div class="result-area" style="min-height:200px">
                 <img id="forgeryAnalysisImage" style="max-width:100%">
             </div>
+        </div>
+
+        <!-- Document Forensics Result -->
+        <div class="card" id="forensicsCard" style="display:none">
+            <h3>
+                🔴 <span data-lang="ar">الفحص الجنائي للمستندات (5 طرق)</span>
+                <span data-lang="en" style="display:none">Document Forensics (5 Methods)</span>
+                <span id="forensicsSeverityBadge" style="
+                    display:inline-block; margin-right:12px; padding:4px 14px;
+                    border-radius:20px; font-size:0.8rem; font-weight:700;
+                "></span>
+            </h3>
+
+            <!-- Stats -->
+            <div class="stats-bar" style="margin-bottom:12px">
+                <div class="stat">
+                    <div class="num" id="dfScore">-</div>
+                    <div class="label" data-lang="ar">درجة التزوير</div>
+                </div>
+                <div class="stat">
+                    <div class="num" id="dfPercentage">-</div>
+                    <div class="label" data-lang="ar">نسبة المساحة</div>
+                </div>
+                <div class="stat">
+                    <div class="num" id="dfRegions">-</div>
+                    <div class="label" data-lang="ar">المناطق المشبوهة</div>
+                </div>
+                <div class="stat">
+                    <div class="num" id="dfTime">-</div>
+                    <div class="label" data-lang="ar">الزمن (ms)</div>
+                </div>
+                <div class="stat">
+                    <div class="num" id="dfVerdict">-</div>
+                    <div class="label" data-lang="ar">الحكم</div>
+                </div>
+            </div>
+
+            <!-- Method scores -->
+            <div style="margin-bottom:12px">
+                <h4 style="font-size:0.8rem; color:var(--text-dim); margin-bottom:6px" data-lang="ar">نتائج الطرق الخمس:</h4>
+                <div class="stats-bar" id="dfMethods" style="flex-wrap:wrap"></div>
+            </div>
+
+            <!-- Regions table -->
+            <div id="dfRegionsTable" style="display:none; margin-bottom:12px">
+                <h4 style="font-size:0.8rem; color:var(--red); margin-bottom:6px" data-lang="ar">🔴 المناطق المكتشفة:</h4>
+                <div style="max-height:200px;overflow:auto">
+                    <table class="matches-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>X</th>
+                                <th>Y</th>
+                                <th>W</th>
+                                <th>H</th>
+                                <th>Conf</th>
+                                <th data-lang="ar">النوع</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dfRegionsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Annotated image -->
+            <div class="result-area" style="min-height:200px">
+                <img id="forensicsImage" style="max-width:100%">
+            </div>
+
+            <!-- Canvas (6-panel) -->
+            <div id="dfCanvasWrapper" style="display:none; margin-top:12px">
+                <h4 style="font-size:0.8rem; color:var(--text-dim); margin-bottom:6px" data-lang="ar">📊 لوحة الأدلة الجنائية:</h4>
+                <div class="result-area" style="min-height:200px">
+                    <img id="forensicsCanvas" style="max-width:100%">
+                </div>
+            </div>
+
+            <!-- Summary -->
+            <div id="dfSummary" style="font-size:0.78rem; color:var(--text-dim); margin-top:12px;
+                background:#111; padding:12px; border-radius:8px; font-family:monospace;
+                max-height:250px; overflow:auto; white-space:pre-wrap"></div>
         </div>
     </div>
 </div>
@@ -829,6 +916,7 @@
         document.getElementById('matchBtn').disabled = !ready;
         document.getElementById('compareBtn').disabled = !ready;
         document.getElementById('forgeryBtn').disabled = !ready;
+        document.getElementById('forensicsBtn').disabled = !ready;
     }
 
     // ═══════════════════════════════════════════
@@ -909,6 +997,115 @@
 
         // Also show the main result
         showResult(data);
+
+        card.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // ═══════════════════════════════════════════
+    // Document Forensics (5 Methods)
+    // ═══════════════════════════════════════════
+    async function runDocumentForensics() {
+        if (!hasSource || !hasTemplate) return;
+        setLoading(true);
+
+        try {
+            const res = await fetch('/api/document-forensics', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    pixel_diff_threshold: 25.0,
+                    min_region_area: 50,
+                    morph_close_kernel: 5,
+                }),
+            });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+
+            showForensicsResult(data);
+        } catch (e) {
+            showToast(e.message);
+        }
+        setLoading(false);
+    }
+
+    function showForensicsResult(data) {
+        // Show forensics card
+        const card = document.getElementById('forensicsCard');
+        card.style.display = 'block';
+
+        // Severity badge
+        const badge = document.getElementById('forensicsSeverityBadge');
+        badge.textContent = data.overall_severity_label;
+        const severityColors = {
+            'NONE': '#3fb950',
+            'MINOR': '#d2991d',
+            'SUSPICIOUS': '#d2991d',
+            'SIGNIFICANT': '#f85149',
+            'MAJOR': '#c0392b',
+            'CRITICAL': '#8b0000'
+        };
+        badge.style.background = severityColors[data.overall_severity] || '#8b949e';
+        badge.style.color = '#fff';
+
+        // Stats
+        document.getElementById('dfScore').textContent = (data.tamper_score * 100).toFixed(1) + '%';
+        document.getElementById('dfScore').style.color = data.tamper_score > 0.5 ? 'var(--red)' : 'var(--green)';
+        document.getElementById('dfPercentage').textContent = data.tamper_percentage.toFixed(2) + '%';
+        document.getElementById('dfRegions').textContent = data.region_count;
+        document.getElementById('dfTime').textContent = data.elapsed_ms;
+        document.getElementById('dfVerdict').textContent = data.is_tampered ? '⛔ مزور' : '✅ سليم';
+        document.getElementById('dfVerdict').style.color = data.is_tampered ? 'var(--red)' : 'var(--green)';
+
+        // Method scores
+        const methodsDiv = document.getElementById('dfMethods');
+        methodsDiv.innerHTML = '';
+        const methodNames = {
+            'pixel_subtraction': '1. فرق البكسل',
+            'stroke_width': '2. عرض الخط',
+            'ink_consistency': '3. تناسق الحبر',
+            'spacing_analysis': '4. تباعد الأحرف',
+            'gradient_texture': '5. النسيج والتدرج'
+        };
+        for (const [key, result] of Object.entries(data.method_results || {})) {
+            const conf = result.confidence;
+            const color = conf > 0.5 ? 'var(--red)' : conf > 0.25 ? 'var(--orange)' : 'var(--green)';
+            methodsDiv.innerHTML += `<div class="stat" style="min-width:100px">
+                <div class="num" style="font-size:1rem; color:${color}">${(conf*100).toFixed(1)}%</div>
+                <div class="label" style="font-size:0.6rem">${methodNames[key] || key}</div>
+            </div>`;
+        }
+
+        // Regions table
+        if (data.regions && data.regions.length > 0) {
+            document.getElementById('dfRegionsTable').style.display = 'block';
+            const tbody = document.getElementById('dfRegionsBody');
+            tbody.innerHTML = '';
+            data.regions.forEach(r => {
+                const typeTag = r.likely_addition ? '➕ إضافة' :
+                                r.likely_erasure ? '🧹 مسح' :
+                                r.likely_alteration ? '✏️ تعديل' : 'اختلاف';
+                tbody.innerHTML += `<tr>
+                    <td>${r.id}</td><td>${r.x}</td><td>${r.y}</td>
+                    <td>${r.width}</td><td>${r.height}</td>
+                    <td style="color:${r.tamper_confidence>0.5?'var(--red)':'var(--orange)'}">${(r.tamper_confidence*100).toFixed(1)}%</td>
+                    <td>${typeTag}</td>
+                </tr>`;
+            });
+        } else {
+            document.getElementById('dfRegionsTable').style.display = 'none';
+        }
+
+        // Images
+        document.getElementById('forensicsImage').src = data.annotated_preview;
+        if (data.canvas_preview) {
+            document.getElementById('dfCanvasWrapper').style.display = 'block';
+            document.getElementById('forensicsCanvas').src = data.canvas_preview;
+        }
+
+        // Summary
+        if (data.summary) {
+            document.getElementById('dfSummary').textContent = data.summary.join('\n');
+        }
 
         card.scrollIntoView({ behavior: 'smooth' });
     }

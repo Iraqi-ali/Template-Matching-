@@ -25,6 +25,14 @@ from src.forgery_detector import (
     ForgeryDetector, draw_difference_boxes, draw_forgery_report,
     create_full_analysis_canvas,
 )
+from src.forgery_detector import (
+    ForgeryDetector, draw_difference_boxes, draw_forgery_report,
+    create_full_analysis_canvas,
+)
+from src.document_forensics import (
+    DocumentForensicsEngine, DocumentForensicsReport, TamperSeverity,
+    run_document_forensics,
+)
 from src.utils import load_image, save_image, resize_to_max_dim
 
 
@@ -228,6 +236,56 @@ def cmd_validate(args):
 
 
 # ---------------------------------------------------------------------------
+# CLI: Document Forensics (5 methods)
+# ---------------------------------------------------------------------------
+
+def cmd_forensics(args):
+    """Run 5-method document forensics analysis."""
+    print("🔬 DOCUMENT FORENSICS ANALYSIS")
+    print("=" * 60)
+    print(f"   Original: {args.original}")
+    print(f"   Suspect:  {args.suspect}")
+    print()
+
+    # Run analysis
+    report = run_document_forensics(
+        original_path=args.original,
+        suspect_path=args.suspect,
+        output_dir=args.output_dir,
+    )
+
+    # Print summary
+    for line in report.summary_lines:
+        print(f"   {line}")
+
+    # Print detailed method results
+    print(f"\n📊 DETAILED METHOD RESULTS:")
+    print(f"   {'Method':<25s} {'Confidence':>10s} {'Density':>10s}")
+    print(f"   {'-'*45}")
+    for method_name, result in report.method_results.items():
+        conf = result.get("confidence", 0)
+        density = result.get("density", 0)
+        print(f"   {method_name:<25s} {conf:>10.4f} {density:>10.4f}")
+
+    if report.tamper_regions:
+        print(f"\n🔴 DETECTED TAMPER REGIONS ({report.region_count}):")
+        for i, r in enumerate(report.tamper_regions):
+            print(f"   [{i+1}] ({r.x},{r.y}) {r.width}×{r.height}px "
+                  f"area={r.area_px}px² conf={r.tamper_confidence:.1%}")
+            if r.description:
+                print(f"       → {r.description}")
+
+    # Print output files
+    import os
+    print(f"\n📁 Output files saved to: {os.path.abspath(args.output_dir)}/")
+    print(f"   • forensics_annotated.png  — Suspect image with RED difference boxes")
+    print(f"   • forensics_canvas.png     — 6-panel forensic evidence canvas")
+    print(f"   • forensics_mask.png       — Binary difference mask")
+    print(f"   • forensics_heatmap.png    — Tampering probability heatmap")
+    print(f"   • forensics_report.txt     — Full text report")
+
+
+# ---------------------------------------------------------------------------
 # CLI: GUI
 # ---------------------------------------------------------------------------
 
@@ -315,6 +373,17 @@ Examples:
                        help="Use strict validation (default: True)")
     p_val.add_argument("--output", "-o", help="Output image path")
     p_val.set_defaults(func=cmd_validate)
+
+    # ---- forensics (document) ----
+    p_forensics = sub.add_parser(
+        "forensics",
+        help="Document forensics — 5 methods to detect tampering (ink, strokes, spacing, etc.)",
+    )
+    p_forensics.add_argument("original", help="Path to the ORIGINAL/genuine document image")
+    p_forensics.add_argument("suspect", help="Path to the SUSPECT document image to analyze")
+    p_forensics.add_argument("--output-dir", "-o", default="forensics_output",
+                             help="Output directory for results (default: forensics_output/)")
+    p_forensics.set_defaults(func=cmd_forensics)
 
     # ---- compare ----
     p_comp = sub.add_parser("compare", help="Compare ALL matching methods side-by-side")

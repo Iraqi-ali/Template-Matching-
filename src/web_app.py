@@ -27,6 +27,9 @@ from .forgery_detector import (
     ForgeryDetector, ForgeryReport, ForgeryRisk,
     draw_difference_boxes, draw_forgery_report, create_full_analysis_canvas,
 )
+from .document_forensics import (
+    DocumentForensicsEngine, DocumentForensicsReport, TamperSeverity,
+)
 
 # ---------------------------------------------------------------------------
 # App factory
@@ -384,6 +387,96 @@ def create_app() -> Flask:
             "reasons": reasons,
             "result_preview": _img_to_b64(result_img, max_dim=900),
             "elapsed_ms": round(report.elapsed_ms, 1),
+        })
+
+    @app.route("/api/document-forensics", methods=["POST"])
+    def document_forensics():
+        """
+        Run 5-method document forensics analysis.
+        Compares the uploaded source (original) vs template (suspect).
+        Detects: ink additions, character insertions, spacing changes, erasures.
+        Returns RED-box annotations on all differences.
+        """
+        sid = session.get("session_id")
+        original = _get_image(sid, "source")
+        suspect = _get_image(sid, "template")
+
+        if original is None or suspect is None:
+            return jsonify({"error": "Upload both original and suspect document images"}), 400
+
+        data = request.get_json() or {}
+
+        # Run document forensics
+        engine = DocumentForensicsEngine(
+            pixel_diff_threshold=float(data.get("pixel_diff_threshold", 25.0)),
+            min_region_area=int(data.get("min_region_area", 50)),
+            morph_close_kernel=int(data.get("morph_close_kernel", 5)),
+        )
+        report = engine.analyze(original, suspect, align=True)
+
+        # Convert images to base64
+        annotated_b64 = _img_to_b64(report.annotated_image, max_dim=900) if report.annotated_image is not None else ""
+        canvas_b64 = _img_to_b64(report.forensics_canvas, max_dim=1400) if report.forensics_canvas is not None else ""
+        mask_b64 = _img_to_b64(report.difference_mask, max_dim=900) if report.difference_mask is not None else ""
+
+        heatmap_vis = None
+        if report.tamper_heatmap is not None:
+            heatmap_vis = cv2.applyColorMap(
+                (report.tamper_heatmap * 255).astype(np.uint8), cv2.COLORMAP_JET
+            )
+        heatmap_b64 = _img_to_b64(heatmap_vis, max_dim=900) if heatmap_vis is not None else ""
+
+        # Build regions JSON
+        regions_json = []
+        for i, r in enumerate(report.tamper_regions):
+            regions_json.append({
+                "id": i + 1,
+                "x": r.x, "y": r.y,
+                "width": r.width, "height": r.height,
+                "area_px": r.area_px,
+                "tamper_confidence": round(r.tamper_confidence, 4),
+                "severity": r.severity.name,
+                "severity_label": r.severity.label,
+                "likely_addition": r.likely_addition,
+                "likely_erasure": r.likely_erasure,
+                "likely_alteration": r.likely_alteration,
+                "description": r.description,
+                "method_scores": {
+                    k: round(v, 4) for k, v in r.method_scores.items()
+                },
+            })
+
+        # Method results
+        methods_json = {}
+        for method_name, result in report.method_results.items():
+            methods_json[method_name] = {
+                "confidence": round(result.get("confidence", 0), 4),
+                "density": round(result.get("density", 0), 4),
+            }
+
+        return jsonify({
+            "ok": True,
+            "is_tampered": report.is_tampered,
+            "overall_severity": report.overall_severity.name,
+            "overall_severity_label": report.overall_severity.label,
+            "tamper_score": round(report.tamper_score, 4),
+            "tamper_percentage": round(report.tamper_percentage, 2),
+            "region_count": report.region_count,
+            "elapsed_ms": round(report.elapsed_ms, 1),
+
+            # Images
+            "annotated_preview": annotated_b64,
+            "canvas_preview": canvas_b64,
+            "mask_preview": mask_b64,
+            "heatmap_preview": heatmap_b64,
+
+            # Data
+            "regions": regions_json,
+            "method_results": methods_json,
+            "summary": report.summary_lines,
+
+            "source_shape": list(report.source_shape),
+            "template_shape": list(report.template_shape),
         })
 
     @app.route("/api/download-result", methods=["GET"])
