@@ -37,6 +37,7 @@ from .forensic_reporter import ForensicReporter
 from .copy_move_detector import CopyMoveDetector, CopyMoveReport
 from .font_analyzer import FontAnalyzer, FontReport
 from .authenticity_scorer import AuthenticityScorer, AuthenticityReport
+from .advanced_detectors import AdvancedDetectors, AdvancedReport
 
 # ---------------------------------------------------------------------------
 # App factory
@@ -678,6 +679,45 @@ def create_app() -> Flask:
             "tamper_score": round(f_report.tamper_score, 4),
             "severity": f_report.overall_severity.label,
             "region_count": f_report.region_count,
+        })
+
+    @app.route("/api/advanced-detect", methods=["POST"])
+    def advanced_detect():
+        """Run 5 advanced forensic detectors."""
+        sid = session.get("session_id")
+        source = _get_image(sid, "source")
+        template = _get_image(sid, "template")
+        if source is None:
+            return jsonify({"error": "Upload source image first"}), 400
+        engine = AdvancedDetectors()
+        report = engine.analyze(source, template)
+        heatmap_b64 = ""
+        if report.heatmap is not None:
+            heatmap_vis = cv2.applyColorMap((report.heatmap*255).astype(np.uint8), cv2.COLORMAP_HOT)
+            heatmap_b64 = _img_to_b64(heatmap_vis, max_dim=900)
+        return jsonify({
+            "ok": True,
+            "verdict": report.verdict,
+            "overall_risk": round(report.overall_risk, 4),
+            "is_suspicious": report.is_suspicious,
+            "jpeg_ghost_score": round(report.jpeg_ghost_score, 4),
+            "jpeg_ghost_detected": report.jpeg_ghost_detected,
+            "jpeg_ghost_details": report.jpeg_ghost_details,
+            "double_jpeg_score": round(report.double_jpeg_score, 4),
+            "double_jpeg_detected": report.double_jpeg_detected,
+            "double_jpeg_details": report.double_jpeg_details,
+            "luminance_score": round(report.luminance_score, 4),
+            "luminance_anomaly": report.luminance_anomaly,
+            "luminance_details": report.luminance_details,
+            "cfa_score": round(report.cfa_score, 4),
+            "cfa_anomaly": report.cfa_anomaly,
+            "cfa_details": report.cfa_details,
+            "prnu_available": report.prnu_available,
+            "prnu_similarity": round(report.prnu_similarity, 4) if report.prnu_available else 0,
+            "prnu_details": report.prnu_details,
+            "details": report.details,
+            "heatmap_preview": heatmap_b64,
+            "elapsed_ms": round(report.elapsed_ms, 1),
         })
 
     @app.route("/api/copy-move", methods=["POST"])

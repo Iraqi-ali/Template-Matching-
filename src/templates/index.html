@@ -142,6 +142,7 @@ td{padding:6px 10px;border-bottom:1px solid #1a2a3a}tbody tr:hover{background:rg
       <button class="tab-btn" data-tab="copymove">📋 نسخ/لصق</button>
       <button class="tab-btn" data-tab="font">🔤 خطوط</button>
       <button class="tab-btn" data-tab="score">💯 الأصالة</button>
+      <button class="tab-btn" data-tab="advanced">🧬 متقدم</button>
     </div>
 
     <div class="tab-content" id="tab-match">
@@ -202,7 +203,10 @@ td{padding:6px 10px;border-bottom:1px solid #1a2a3a}tbody tr:hover{background:rg
       <button class="btn btn-green" id="scoreBtn" onclick="runAuthScore()">💯 احسب درجة الأصالة الشاملة</button>
       <div id="scoreResult" style="margin-top:10px;font-size:.8rem"></div>
     </div>
-  </div>
+    <div class="tab-content" id="tab-advanced" style="display:none">
+      <p style="font-size:.78rem;color:var(--text3);margin-bottom:8px">5 طرق متقدمة: JPEG Ghost، ضغط مزدوج، تدرج الإضاءة، CFA، بصمة المستشعر (PRNU)</p>
+      <button class="btn btn-purple" id="advBtn" onclick="runAdvanced()" disabled>🧬 تشغيل الفحص المتقدم (5 طرق)</button>
+    </div>  </div>
 </div>
 
 <div class="main">
@@ -284,6 +288,18 @@ td{padding:6px 10px;border-bottom:1px solid #1a2a3a}tbody tr:hover{background:rg
     <h3>💯 درجة الأصالة الشاملة</h3>
     <div id="scoreFullResult"></div>
   </div>
+
+  <div class="result-card glow-purple" id="advCard">
+    <h3>🧬 الفحص المتقدم (5 طرق) <span class="badge" id="advBadge"></span></h3>
+    <div class="stats" style="margin-bottom:10px">
+      <div class="stat-card"><div class="num" id="advRisk" style="color:var(--purple)">-</div><div class="lbl">الخطر الكلي</div></div>
+      <div class="stat-card"><div class="num" id="advGhost" style="color:var(--red2)">-</div><div class="lbl">JPEG Ghost</div></div>
+      <div class="stat-card"><div class="num" id="advDjpeg" style="color:var(--orange)">-</div><div class="lbl">ضغط مزدوج</div></div>
+      <div class="stat-card"><div class="num" id="advLum" style="color:var(--accent2)">-</div><div class="lbl">إضاءة</div></div>
+      <div class="stat-card"><div class="num" id="advCfa" style="color:var(--green2)">-</div><div class="lbl">CFA</div></div>
+    </div>
+    <div id="advDetails" style="font-size:.75rem;color:var(--text3)"></div>
+  </div>
 </div>
 </div>
 
@@ -302,7 +318,7 @@ document.querySelectorAll('.tab-btn').forEach(b=>{b.onclick=function(){
   if(S.currentTab==='vault') vaultList();
 }});
 
-function hideCards(){['matchCard','forensicsCard','sigCard','metaCard','cmCard','fontCard','scoreCard','statusCard'].forEach(id=>document.getElementById(id).style.display='none')}
+function hideCards(){['matchCard','forensicsCard','sigCard','metaCard','cmCard','fontCard','scoreCard','advCard','statusCard'].forEach(id=>document.getElementById(id).style.display='none')}
 
 // Upload
 async function upload(type,input){
@@ -381,6 +397,7 @@ function upd(){
   document.getElementById('reportBtn').disabled=!b;
   document.getElementById('cmBtn').disabled=!s;
   document.getElementById('fontBtn').disabled=!s;
+  document.getElementById('advBtn').disabled=!s;
   document.getElementById('metaBtn').disabled=!s;
   document.getElementById('vaultRegBtn').disabled=!s;
   document.getElementById('vaultSearchBtn').disabled=!s;
@@ -620,7 +637,32 @@ function clearStatus(){document.getElementById('statusCard').style.display='none
 function downloadResult(){window.open('/api/download-result','_blank')}
 function toggleLang(){S.lang=S.lang==='ar'?'en':'ar';document.dir=S.lang==='ar'?'rtl':'ltr';document.getElementById('langBtn').textContent=S.lang==='ar'?'🇬🇧 English':'🇸🇦 العربية'}
 function toast(msg,type){var t=document.getElementById('toast');t.textContent=msg;t.className='toast toast-'+(type||'info')+' show';setTimeout(function(){t.classList.remove('show')},3000)}
-document.addEventListener('keydown',function(e){if(e.ctrlKey&&e.key==='Enter'){if(S.currentTab==='match')runMatch();else if(S.currentTab==='forensics')runForensics();else if(S.currentTab==='signature')runSignature();else if(S.currentTab==='copymove')runCopyMove();else if(S.currentTab==='font')runFontAnalysis();else if(S.currentTab==='score')runAuthScore()}});
+document.addEventListener('keydown',function(e){if(e.ctrlKey&&e.key==='Enter'){if(S.currentTab==='match')runMatch();else if(S.currentTab==='forensics')runForensics();else if(S.currentTab==='signature')runSignature();else if(S.currentTab==='copymove')runCopyMove();else if(S.currentTab==='font')runFontAnalysis();else if(S.currentTab==='score')runAuthScore();else if(S.currentTab==='advanced')runAdvanced()}});
+
+// ADVANCED DETECTION (5 methods)
+async function runAdvanced(){
+  if(!S.hasSrc)return;loading(true,'🧬 جاري الفحص المتقدم (5 طرق)...');hideCards();setProgress(10,'❶ JPEG Ghost Detection...');
+  try{var r=await fetch('/api/advanced-detect',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    setTimeout(function(){setProgress(30,'❷ Double JPEG Compression...');},300);
+    setTimeout(function(){setProgress(50,'❸ Luminance Gradient...');},600);
+    setTimeout(function(){setProgress(70,'❹ CFA Analysis...');},900);
+    setTimeout(function(){setProgress(85,'❺ PRNU Fingerprint...');},1200);
+    var d=await r.json();if(!d.ok)throw new Error(d.error);setProgress(95,'تجميع النتائج...');
+    var card=document.getElementById('advCard');card.style.display='block';
+    var badge=document.getElementById('advBadge');badge.textContent=d.verdict;
+    badge.style.background=d.is_suspicious?'var(--red)':d.overall_risk>.2?'var(--orange)':'var(--green)';badge.style.color='#fff';
+    document.getElementById('advRisk').textContent=(d.overall_risk*100).toFixed(0)+'%';
+    document.getElementById('advGhost').textContent=(d.jpeg_ghost_score*100).toFixed(0)+'%'+(d.jpeg_ghost_detected?' ⚠':'');
+    document.getElementById('advDjpeg').textContent=(d.double_jpeg_score*100).toFixed(0)+'%'+(d.double_jpeg_detected?' ⚠':'');
+    document.getElementById('advLum').textContent=(d.luminance_score*100).toFixed(0)+'%'+(d.luminance_anomaly?' ⚠':'');
+    document.getElementById('advCfa').textContent=(d.cfa_score*100).toFixed(0)+'%'+(d.cfa_anomaly?' ⚠':'');
+    document.getElementById('advDetails').innerHTML=(d.details||[]).join('<br>');
+    if(d.heatmap_preview)showImg(d.heatmap_preview);
+    showStats(d.verdict,(d.overall_risk*100).toFixed(0)+'% خطر','5 طرق متقدمة',d.elapsed_ms+' ms');
+    setStatus('🧬 '+d.verdict+'. خطر: '+(d.overall_risk*100).toFixed(0)+'%. Ghost: '+(d.jpeg_ghost_score*100).toFixed(0)+'%. ضغط مزدوج: '+(d.double_jpeg_score*100).toFixed(0)+'%. إضاءة: '+(d.luminance_score*100).toFixed(0)+'%. CFA: '+(d.cfa_score*100).toFixed(0)+'%.'+(d.prnu_available?' PRNU: '+(d.prnu_similarity*100).toFixed(0)+'%.':''));
+    setProgress(100,'✅ اكتمل');setTimeout(clearStatus,4000);
+  }catch(e){toast(e.message,'err');clearStatus()}loading(false);
+}
 </script>
 </body>
 </html>
