@@ -20,9 +20,13 @@ from flask import (
 
 from .template_matcher import (
     TemplateMatcher, MatchMethod, MatchResult, DetectionReport,
-    draw_matches, draw_match_comparison,
+    draw_matches, draw_match_comparison, draw_match_with_differences,
 )
 from .multi_scale_matcher import MultiScaleMatcher
+from .forgery_detector import (
+    ForgeryDetector, ForgeryReport, ForgeryRisk,
+    draw_difference_boxes, draw_forgery_report, create_full_analysis_canvas,
+)
 
 # ---------------------------------------------------------------------------
 # App factory
@@ -165,8 +169,8 @@ def create_app() -> Flask:
 
         report = matcher.match(source, template, max_matches=max_matches)
 
-        # Draw result
-        result_img = draw_matches(source, report)
+        # Draw result with validation indicators
+        result_img = draw_matches(source, report, show_validation=True)
 
         # Build response
         matches_json = []
@@ -181,6 +185,18 @@ def create_app() -> Flask:
                 "scale": round(m.scale, 2),
             })
 
+        validation_info = {}
+        if report.validation is not None:
+            validation_info = {
+                "is_valid": report.validation.is_valid,
+                "confidence": round(report.validation.confidence, 4),
+                "ssim_score": round(report.validation.ssim_score, 4),
+                "histogram_correlation": round(report.validation.histogram_correlation, 4),
+                "edge_overlap": round(report.validation.edge_overlap, 4),
+                "pixel_similarity": round(report.validation.pixel_similarity, 4),
+                "reasons": report.validation.reasons,
+            }
+
         return jsonify({
             "ok": True,
             "match_count": report.match_count,
@@ -191,6 +207,7 @@ def create_app() -> Flask:
             "result_preview": _img_to_b64(result_img, max_dim=900),
             "source_shape": list(report.source_shape),
             "template_shape": list(report.template_shape),
+            "validation": validation_info,
         })
 
     @app.route("/api/compare", methods=["POST"])
@@ -227,6 +244,148 @@ def create_app() -> Flask:
             "comparison_preview": _img_to_b64(comparison_img, max_dim=1200),
         })
 
+    @app.route("/api/forgery-analysis", methods=["POST"])
+    def forgery_analysis():
+        """Run comprehensive forgery/tampering detection."""
+        sid = session.get("session_id")
+        source = _get_image(sid, "source")
+        template = _get_image(sid, "template")
+
+        if source is None or template is None:
+            return jsonify({"error": "Upload both source and template images first"}), 400
+
+        data = request.get_json() or {}
+        threshold = float(data.get("threshold", 0.80))
+        method_name = data.get("method", "TM_CCOEFF_NORMED")
+        multi_scale = bool(data.get("multi_scale", False))
+
+        try:
+            method = MatchMethod[method_name]
+        except KeyError:
+            method = MatchMethod.TM_CCOEFF_NORMED
+
+        # Step 1: Run matching with validation
+        if multi_scale:
+            matcher = MultiScaleMatcher(
+                method=method, threshold=threshold,
+                scale_range=(0.3, 2.5), scale_steps=25,
+            )
+        else:
+            matcher = TemplateMatcher(
+                method=method, threshold=threshold,
+                use_nms=True, validate_matches=True, strict_validation=True,
+            )
+
+        report = matcher.match(source, template)
+
+        # Step 2: Run forgery detection
+        detector = ForgeryDetector()
+        matched_regions = [(m.x, m.y, m.width, m.height) for m in report.matches]
+        forgery_report = detector.analyze(source, template, matched_regions)
+
+        # Step 3: Run quick validation on matched regions
+        if matched_regions:
+            is_valid, valid_conf, valid_reasons = detector.quick_validation(
+                source, template, matched_regions
+            )
+        else:
+            is_valid, valid_conf, valid_reasons = False, 0.0, ["No regions matched"]
+
+        # Step 4: Generate visualizations
+        # Main result with green difference boxes
+        result_img = draw_match_with_differences(source, template, report)
+
+        # Full analysis canvas
+        analysis_canvas = create_full_analysis_canvas(
+            source, template, forgery_report, matched_regions
+        )
+
+        # Build response
+        matches_json = []
+        for i, m in enumerate(report.matches):
+            matches_json.append({
+                "id": i + 1,
+                "x": m.x,
+                "y": m.y,
+                "width": m.width,
+                "height": m.height,
+                "confidence": round(m.confidence, 4),
+                "scale": round(m.scale, 2),
+            })
+
+        return jsonify({
+            "ok": True,
+            "match_count": report.match_count,
+            "method": report.method.label,
+            "threshold": report.threshold,
+            "elapsed_ms": round(report.elapsed_ms, 1),
+            "matches": matches_json,
+            "result_preview": _img_to_b64(result_img, max_dim=900),
+            "analysis_preview": _img_to_b64(analysis_canvas, max_dim=1200),
+
+            # Validation results
+            "is_genuine": is_valid,
+            "validation_confidence": round(valid_conf, 4),
+            "validation_reasons": valid_reasons,
+
+            # Forgery analysis
+            "forgery_risk": forgery_report.risk_level.name,
+            "forgery_risk_label": forgery_report.risk_level.label,
+            "forgery_risk_score": round(forgery_report.risk_score, 4),
+            "ssim_score": round(forgery_report.ssim_score, 4),
+            "ela_score": round(forgery_report.ela_score, 4),
+            "noise_consistency": round(forgery_report.noise_consistency, 4),
+            "histogram_correlation": round(forgery_report.histogram_correlation, 4),
+            "edge_anomaly_score": round(forgery_report.edge_anomaly_score, 4),
+            "diff_regions_count": len(forgery_report.diff_regions),
+            "analysis_details": forgery_report.details,
+            "analysis_elapsed_ms": round(forgery_report.elapsed_ms, 1),
+
+            "source_shape": list(report.source_shape),
+            "template_shape": list(report.template_shape),
+        })
+
+    @app.route("/api/validate-match", methods=["POST"])
+    def validate_match():
+        """Run ONLY validation on a match without full forgery analysis."""
+        sid = session.get("session_id")
+        source = _get_image(sid, "source")
+        template = _get_image(sid, "template")
+
+        if source is None or template is None:
+            return jsonify({"error": "Upload both source and template images first"}), 400
+
+        data = request.get_json() or {}
+        threshold = float(data.get("threshold", 0.80))
+        strict = bool(data.get("strict", True))
+
+        # Run matching
+        matcher = TemplateMatcher(
+            threshold=threshold, validate_matches=True, strict_validation=strict,
+        )
+        report = matcher.match(source, template)
+
+        matched_regions = [(m.x, m.y, m.width, m.height) for m in report.matches]
+
+        # Quick validation
+        detector = ForgeryDetector()
+        is_valid, conf, reasons = detector.quick_validation(
+            source, template, matched_regions, strict=strict
+        )
+
+        # Generate result image
+        result_img = draw_match_with_differences(source, template, report)
+
+        return jsonify({
+            "ok": True,
+            "match_count": report.match_count,
+            "is_genuine": is_valid,
+            "confidence": round(conf, 4),
+            "reasons": reasons,
+            "result_preview": _img_to_b64(result_img, max_dim=900),
+            "elapsed_ms": round(report.elapsed_ms, 1),
+        })
+
     @app.route("/api/download-result", methods=["GET"])
     def download_result():
         """Download the last result image as PNG."""
@@ -238,9 +397,9 @@ def create_app() -> Flask:
             return jsonify({"error": "No session data"}), 404
 
         # Quick re-run to get result
-        matcher = TemplateMatcher()
+        matcher = TemplateMatcher(validate_matches=True)
         report = matcher.match(source, template)
-        result_img = draw_matches(source, report)
+        result_img = draw_match_with_differences(source, template, report)
 
         _, buf = cv2.imencode(".png", result_img)
         return send_file(

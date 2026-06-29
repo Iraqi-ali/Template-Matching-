@@ -419,6 +419,12 @@
                     💾 تحميل النتيجة
                 </button>
             </div>
+            <div class="btn-row" style="margin-top: 6px">
+                <button class="btn btn-primary" id="forgeryBtn" onclick="runForgeryAnalysis()" disabled
+                        style="background: #d2991d; font-size: 0.9rem;" data-lang="ar">
+                    🔬 كشف التزوير وتحليل الاختلافات
+                </button>
+            </div>
         </div>
     </div>
 
@@ -466,6 +472,44 @@
         <!-- Comparison result -->
         <div class="result-area" id="comparisonArea" style="display:none; min-height:200px">
             <img id="comparisonImage" style="max-width:100%">
+        </div>
+
+        <!-- Forgery Analysis Result -->
+        <div class="card" id="forgeryCard" style="display:none">
+            <h3>
+                🔬 <span data-lang="ar">نتائج كشف التزوير</span>
+                <span data-lang="en" style="display:none">Forgery Detection Results</span>
+                <span id="forgeryRiskBadge" style="
+                    display:inline-block; margin-right:12px; padding:4px 14px;
+                    border-radius:20px; font-size:0.8rem; font-weight:700;
+                "></span>
+            </h3>
+            <div class="stats-bar" style="margin-bottom:12px">
+                <div class="stat">
+                    <div class="num" id="fgSsim">-</div>
+                    <div class="label">SSIM</div>
+                </div>
+                <div class="stat">
+                    <div class="num" id="fgEla">-</div>
+                    <div class="label">ELA Score</div>
+                </div>
+                <div class="stat">
+                    <div class="num" id="fgNoise">-</div>
+                    <div class="label" data-lang="ar">اتساق الضوضاء</div>
+                </div>
+                <div class="stat">
+                    <div class="num" id="fgDiffRegions">-</div>
+                    <div class="label" data-lang="ar">مناطق الاختلاف</div>
+                </div>
+                <div class="stat">
+                    <div class="num" id="fgValidation">-</div>
+                    <div class="label" data-lang="ar">التحقق</div>
+                </div>
+            </div>
+            <div id="forgeryDetails" style="font-size:0.8rem; color:var(--text-dim); margin-bottom:12px"></div>
+            <div class="result-area" style="min-height:200px">
+                <img id="forgeryAnalysisImage" style="max-width:100%">
+            </div>
         </div>
     </div>
 </div>
@@ -725,8 +769,26 @@
         document.getElementById('statsBar').style.display = 'flex';
         document.getElementById('statMatches').textContent = data.match_count;
         document.getElementById('statTime').textContent = data.elapsed_ms;
-        document.getElementById('statMethod').textContent = data.method.split('(')[0].trim();
+        document.getElementById('statMethod').textContent = data.method ? data.method.split('(')[0].trim() : '-';
         document.getElementById('statThreshold').textContent = data.threshold;
+
+        // Add validation stat if available
+        let statsBar = document.getElementById('statsBar');
+        let validationStat = document.getElementById('statValidation');
+        if (data.validation && !validationStat) {
+            validationStat = document.createElement('div');
+            validationStat.className = 'stat';
+            validationStat.id = 'statValidation';
+            validationStat.innerHTML = '<div class="num" id="statValidationVal">-</div><div class="label">Validation</div>';
+            statsBar.appendChild(validationStat);
+        }
+        if (data.validation) {
+            const valEl = document.getElementById('statValidationVal');
+            if (valEl) {
+                valEl.textContent = data.validation.is_valid ? '\u2713 GENUINE' : '\u26A0 UNVERIFIED';
+                valEl.style.color = data.validation.is_valid ? 'var(--green)' : 'var(--orange)';
+            }
+        }
 
         // Image
         document.getElementById('emptyState').style.display = 'none';
@@ -739,7 +801,7 @@
         const tbody = document.getElementById('matchesBody');
         tbody.innerHTML = '';
 
-        if (data.matches.length > 0) {
+        if (data.matches && data.matches.length > 0) {
             card.style.display = 'block';
             data.matches.forEach(m => {
                 let confClass = m.confidence >= 0.9 ? 'conf-high' : m.confidence >= 0.6 ? 'conf-med' : 'conf-low';
@@ -766,6 +828,89 @@
         const ready = hasSource && hasTemplate;
         document.getElementById('matchBtn').disabled = !ready;
         document.getElementById('compareBtn').disabled = !ready;
+        document.getElementById('forgeryBtn').disabled = !ready;
+    }
+
+    // ═══════════════════════════════════════════
+    // Forgery Analysis
+    // ═══════════════════════════════════════════
+    async function runForgeryAnalysis() {
+        if (!hasSource || !hasTemplate) return;
+        setLoading(true);
+
+        const payload = {
+            method: document.getElementById('methodSelect').value,
+            threshold: parseFloat(document.getElementById('thresholdSlider').value),
+            multi_scale: document.getElementById('multiScaleCheck').checked,
+        };
+
+        try {
+            const res = await fetch('/api/forgery-analysis', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+
+            lastResultData = data;
+            showForgeryResult(data);
+            document.getElementById('downloadBtn').disabled = false;
+        } catch (e) {
+            showToast(e.message);
+        }
+        setLoading(false);
+    }
+
+    function showForgeryResult(data) {
+        // Show forgery card
+        const card = document.getElementById('forgeryCard');
+        card.style.display = 'block';
+
+        // Risk badge
+        const badge = document.getElementById('forgeryRiskBadge');
+        badge.textContent = data.forgery_risk_label;
+        const riskColors = {
+            'NONE': '#3fb950',
+            'LOW': '#d2991d',
+            'MEDIUM': '#d2991d',
+            'HIGH': '#f85149',
+            'CRITICAL': '#f85149'
+        };
+        badge.style.background = riskColors[data.forgery_risk] || '#8b949e';
+        badge.style.color = data.forgery_risk === 'LOW' || data.forgery_risk === 'MEDIUM' ? '#000' : '#fff';
+
+        // Stats
+        document.getElementById('fgSsim').textContent = data.ssim_score.toFixed(4);
+        document.getElementById('fgEla').textContent = data.ela_score.toFixed(4);
+        document.getElementById('fgNoise').textContent = data.noise_consistency.toFixed(4);
+        document.getElementById('fgDiffRegions').textContent = data.diff_regions_count;
+        document.getElementById('fgValidation').textContent = data.is_genuine ? '✓ حقيقي' : '⚠ مشبوه';
+        document.getElementById('fgValidation').style.color = data.is_genuine ? 'var(--green)' : 'var(--red)';
+
+        // Show the analysis details
+        const detailsDiv = document.getElementById('forgeryDetails');
+        detailsDiv.innerHTML = data.analysis_details.map(d => {
+            const isWarning = d.startsWith('⚠️') || d.startsWith('⚠');
+            const color = isWarning ? 'var(--orange)' : 'var(--text-dim)';
+            return `<div style="color:${color}; margin: 3px 0">${d}</div>`;
+        }).join('');
+
+        // Validation reasons
+        if (data.validation_reasons && data.validation_reasons.length > 0) {
+            detailsDiv.innerHTML += `<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border)">
+                <strong data-lang="ar">نتيجة التحقق:</strong>
+                ${data.validation_reasons.map(r => `<div style="color:${r.startsWith('✓')?'var(--green)':'var(--orange)'};margin:2px 0">${r}</div>`).join('')}
+            </div>`;
+        }
+
+        // Show analysis image
+        document.getElementById('forgeryAnalysisImage').src = data.analysis_preview;
+
+        // Also show the main result
+        showResult(data);
+
+        card.scrollIntoView({ behavior: 'smooth' });
     }
 
     function setLoading(on) {

@@ -15,9 +15,13 @@ import threading
 
 from .template_matcher import (
     TemplateMatcher, MatchMethod, DetectionReport,
-    draw_matches, draw_match_comparison,
+    draw_matches, draw_match_comparison, draw_match_with_differences,
 )
 from .multi_scale_matcher import MultiScaleMatcher
+from .forgery_detector import (
+    ForgeryDetector, draw_difference_boxes, draw_forgery_report,
+    create_full_analysis_canvas,
+)
 from .utils import load_image, resize_to_max_dim
 
 
@@ -254,7 +258,7 @@ class TemplateMatchingApp:
         threshold = self.threshold_var.get()
         multi_scale = self.multi_scale_var.get()
 
-        self.status_label.configure(text=" Running matching...")
+        self.status_label.configure(text=" Running matching with validation...")
 
         def _worker():
             try:
@@ -265,11 +269,29 @@ class TemplateMatchingApp:
                     )
                     report = matcher.match(self.source_img, self.template_img)
                 else:
-                    matcher = TemplateMatcher(method=method, threshold=threshold)
+                    matcher = TemplateMatcher(
+                        method=method, threshold=threshold,
+                        validate_matches=True, strict_validation=True,
+                    )
                     report = matcher.match(self.source_img, self.template_img)
 
                 self.last_report = report
-                result_img = draw_matches(self.source_img, report)
+
+                # Generate result with difference boxes
+                result_img = draw_match_with_differences(
+                    self.source_img, self.template_img, report,
+                )
+
+                # Also run forgery analysis if matches found
+                if report.match_count > 0:
+                    detector = ForgeryDetector()
+                    matched_regions = [(m.x, m.y, m.width, m.height) for m in report.matches]
+                    forgery_report = detector.analyze(
+                        self.source_img, self.template_img, matched_regions,
+                    )
+                    self.last_forgery = forgery_report
+                else:
+                    self.last_forgery = None
 
                 self.root.after(0, lambda: self._show_result(result_img, report))
             except Exception as e:
@@ -281,11 +303,24 @@ class TemplateMatchingApp:
         self.result_img = result_img
         self._show_image(result_img, self.result_canvas, self.result_info, "Result")
 
+        # Build status with validation info
+        validation_status = ""
+        if report.validation is not None:
+            if report.validation.is_valid:
+                validation_status = " ✓ GENUINE MATCH"
+            else:
+                validation_status = " ⚠ CHECK VALIDATION"
+
+        forgery_status = ""
+        if hasattr(self, 'last_forgery') and self.last_forgery is not None:
+            forgery_status = f" | Forgery Risk: {self.last_forgery.risk_level.label}"
+
         status = (
-            f" ✅ Done  |  {report.match_count} match(es) found  "
+            f" {report.match_count} match(es){validation_status}  "
             f"|  Method: {report.method.label}  "
             f"|  Threshold: {report.threshold:.2f}  "
             f"|  {report.elapsed_ms:.1f} ms"
+            f"{forgery_status}"
         )
         self.status_label.configure(text=status)
 
