@@ -396,19 +396,25 @@ tr:nth-child(even) {{ background:#f8f9fa; }}
 </table>
 """
 
-        # Evidence images
-        html += """
+        # Evidence images — show ALL available
+        if images:
+            html += """
 <h2>13. Visual Evidence</h2>
-<div class="evidence-panel">
 """
-        for key, b64 in list(images.items())[:4]:
-            label = key.replace('_', ' ').title()
-            html += f"""
+            # Show images in rows of 3
+            img_keys = list(images.keys())
+            for row_start in range(0, len(img_keys), 3):
+                row_keys = img_keys[row_start:row_start+3]
+                html += '<div class="evidence-panel">'
+                for key in row_keys:
+                    b64 = images[key]
+                    label = key.replace('_', ' ').title()
+                    html += f"""
     <div>
-        <p style="font-size:8pt;font-weight:bold;text-align:center">{label}</p>
-        <img src="data:image/png;base64,{b64}" alt="{label}">
+        <p style="font-size:8pt;font-weight:bold;text-align:center;color:#333">{label}</p>
+        <img src="data:image/png;base64,{b64}" alt="{label}" style="border:1px solid #ddd;border-radius:4px">
     </div>"""
-        html += "</div>"
+                html += "</div>"
 
         # Footer
         html += f"""

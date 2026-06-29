@@ -674,20 +674,49 @@ def create_app() -> Flask:
                             signature_report=sig_report, metadata_report=meta_report,
                             fingerprint_match=fp_match)
 
-        # Build embedded images
+        # Build embedded images — include ALL available visuals
         embedded = {}
+        # Original & suspect thumbnails
+        thumb_src = cv2.resize(original, (300, int(300*original.shape[0]/original.shape[1])))
+        _, buf = cv2.imencode('.png', thumb_src)
+        embedded['original'] = base64.b64encode(buf).decode()
+        thumb_sus = cv2.resize(suspect, (300, int(300*suspect.shape[0]/suspect.shape[1])))
+        _, buf = cv2.imencode('.png', thumb_sus)
+        embedded['suspect'] = base64.b64encode(buf).decode()
+        # Forensics
         if f_report.annotated_image is not None:
             _, buf = cv2.imencode('.png', f_report.annotated_image)
-            embedded['forensics_annotated'] = base64.b64encode(buf).decode()
+            embedded['Forensics_Annotated'] = base64.b64encode(buf).decode()
         if hasattr(f_report, 'forensics_canvas') and f_report.forensics_canvas is not None:
             _, buf = cv2.imencode('.png', f_report.forensics_canvas)
-            embedded['forensics_canvas'] = base64.b64encode(buf).decode()
+            embedded['5-Method_Canvas'] = base64.b64encode(buf).decode()
+        if f_report.difference_mask is not None:
+            _, buf = cv2.imencode('.png', f_report.difference_mask)
+            embedded['Difference_Mask'] = base64.b64encode(buf).decode()
+        # Copy-Move
         if cm_report.annotated_image is not None:
             _, buf = cv2.imencode('.png', cm_report.annotated_image)
-            embedded['copymove'] = base64.b64encode(buf).decode()
+            embedded['CopyMove_Detection'] = base64.b64encode(buf).decode()
+        # Font
         if font_report.annotated_image is not None:
             _, buf = cv2.imencode('.png', font_report.annotated_image)
-            embedded['font'] = base64.b64encode(buf).decode()
+            embedded['Font_Analysis'] = base64.b64encode(buf).decode()
+        # Signature
+        if sig_report.annotated_image is not None:
+            _, buf = cv2.imencode('.png', sig_report.annotated_image)
+            embedded['Signature_Verification'] = base64.b64encode(buf).decode()
+        # Advanced Detectors Heatmap
+        if adv_report is not None and adv_report.heatmap is not None and adv_report.heatmap.size > 0:
+            try:
+                hm = np.nan_to_num(adv_report.heatmap, nan=0.0)
+                hm_vis = cv2.applyColorMap((np.clip(hm,0,1)*255).astype(np.uint8), cv2.COLORMAP_HOT)
+                _, buf = cv2.imencode('.png', hm_vis)
+                embedded['Advanced_Heatmap'] = base64.b64encode(buf).decode()
+            except Exception: pass
+        # Forgery ELA
+        if forgery_report is not None and forgery_report.ela_image is not None:
+            _, buf = cv2.imencode('.png', forgery_report.ela_image)
+            embedded['ELA_Analysis'] = base64.b64encode(buf).decode()
 
         reporter = ForensicReporter(
             case_id=data.get("case_id", ""),
